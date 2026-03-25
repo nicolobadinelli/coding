@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# CLASS build artifacts
+build/
+*.o
+*.so
+
+# runtime outputs
+output/
+*.dat
+
+# notebook checkpoints
+.ipynb_checkpoints/
