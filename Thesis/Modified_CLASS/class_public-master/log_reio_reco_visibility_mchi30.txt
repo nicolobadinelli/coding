@@ -1,0 +1,17 @@
+Reading input parameters
+ -> matched budget equations by adjusting Omega_Lambda = 0.690026
+Computing sources
+[perturbations_get_k_list DONE] has_cls=1 has_pk=0 has_dTk=0 has_vTk=0 k_max_for_pk=1.000000e+00 k_min=7.066190e-06 k_max=1.782434e-01
+No Fourier spectra nor nonlinear corrections requested. Nonlinear module skipped.
+Computing transfers
+Computing unlensed harmonic spectra
+l=4 q_index=5549 k=8.942217e-05 | T_reco=5.208401e-04 T_reio=7.908466e-06 E_reco=6.255902e-08 E_reio=1.097247e-06 A_reco=1.981674e-08 A_reio=6.164348e-07
+l=4 q_index=11099 k=1.132040e-03 | T_reco=-1.502154e-02 T_reio=-1.400976e-02 E_reco=-7.208058e-07 E_reio=1.395410e-05 A_reco=4.810768e-07 A_reio=7.951798e-05
+l=4 q_index=16649 k=1.431350e-02 | T_reco=-4.465010e-04 T_reio=-2.155360e-03 E_reco=-8.532067e-09 E_reio=4.149183e-43 A_reco=-1.608347e-09 A_reio=8.638640e-11
+l=12 q_index=5549 k=8.942217e-05 | T_reco=0.000000e+00 T_reio=0.000000e+00 E_reco=0.000000e+00 E_reio=0.000000e+00 A_reco=0.000000e+00 A_reio=0.000000e+00
+l=12 q_index=11099 k=1.132040e-03 | T_reco=3.645146e-03 T_reio=3.355521e-04 E_reco=1.634436e-05 E_reio=-1.127853e-05 A_reco=9.923214e-07 A_reio=-1.056154e-05
+l=12 q_index=16649 k=1.431350e-02 | T_reco=5.418017e-04 T_reio=-1.119439e-03 E_reco=-1.214724e-07 E_reio=4.781384e-42 A_reco=-2.653089e-09 A_reio=2.499149e-10
+l=52 q_index=5549 k=8.942217e-05 | T_reco=0.000000e+00 T_reio=0.000000e+00 E_reco=0.000000e+00 E_reio=0.000000e+00 A_reco=0.000000e+00 A_reio=0.000000e+00
+l=52 q_index=11099 k=1.132040e-03 | T_reco=0.000000e+00 T_reio=0.000000e+00 E_reco=0.000000e+00 E_reio=0.000000e+00 A_reco=0.000000e+00 A_reio=0.000000e+00
+l=52 q_index=16649 k=1.431350e-02 | T_reco=1.445209e-03 T_reio=-1.484449e-04 E_reco=-2.865054e-06 E_reio=-9.004414e-41 A_reco=-3.407128e-09 A_reio=9.071598e-10
+Writing output files in output/m1e-30__... 

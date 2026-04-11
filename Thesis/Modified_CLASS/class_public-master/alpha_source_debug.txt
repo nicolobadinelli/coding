@@ -1,0 +1,218 @@
+===== alpha source block =====
+1444:  class_define_index(ppt->index_tp_alpha,         ppt->has_source_alpha,          index_type,1);
+1445:  class_define_index(ppt->index_tp_alpha_reco,    ppt->has_source_alpha,          index_type,1);
+1446:  class_define_index(ppt->index_tp_alpha_reio,    ppt->has_source_alpha,          index_type,1);
+7514:  double g_reco = 0.0;
+7515:  double g_reio = 0.0;
+7518:  double alpha_reco_source = 0.0;
+7519:  double alpha_reio_source = 0.0;
+7628:    double z_split_cmb = -1.0;
+7703:      z_split_cmb = pth->z_table[index_valley_cmb];
+7815:        if (z >= z_split_cmb) {
+7844:      double g_reco_p = 0.0;
+7845:      double g_reio_p = 0.0;
+7851:      double z_split_p;
+7921:      z_split_p = pth->z_table[index_valley_p];
+7923:      if (z_p >= z_split_p) {
+7924:        g_reco_p = g;
+7925:        g_reio_p = 0.0;
+7928:        g_reco_p = 0.0;
+7929:        g_reio_p = g;
+7933:      _set_source_(ppt->index_tp_p_reco) = sqrt(6.) * g_reco_p * P;
+7934:      _set_source_(ppt->index_tp_p_reio) = sqrt(6.) * g_reio_p * P;
+8166:        double z_split;
+8256:        z_split = pth->z_table[index_valley];
+8264:          g_reco = 0.0;
+8265:          g_reio = 0.0;
+8267:          if (z_alpha >= z_split) {
+8268:            g_reco = g;
+8271:            g_reio = g;
+8275:        _set_source_(ppt->index_tp_alpha) =
+8278:        alpha_reco_source =
+8279:          (-0.5 * ppr->lambda_over_f) * g_reco * delta_chi_for_alpha;
+8281:        alpha_reio_source =
+8282:          (-0.5 * ppr->lambda_over_f) * g_reio * delta_chi_for_alpha;
+8284:        _set_source_(ppt->index_tp_alpha_reco) = alpha_reco_source;
+8285:        _set_source_(ppt->index_tp_alpha_reio) = alpha_reio_source;
+8288:          double alpha_full  = _set_source_(ppt->index_tp_alpha);
+8289:          double alpha_reco  = _set_source_(ppt->index_tp_alpha_reco);
+8290:          double alpha_reio  = _set_source_(ppt->index_tp_alpha_reio);
+8293:          printf("z=%g  g=%e  g_reco=%e  g_reio=%e  gdiff=%e | alpha=%e  alpha_reco=%e  alpha_reio=%e  alpha_split=%e  adiff=%e\n",
+8296:                g_reco,
+8297:                g_reio,
+8298:                g - (g_reco + g_reio),
+
+            const double g_tab =
+              pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+
+            if ((z_tab < z_peak_reco) && (g_tab > g_peak_reio)) {
+              g_peak_reio = g_tab;
+              z_peak_reio = z_tab;
+              index_peak_reio = index_th;
+            }
+          }
+        }
+
+        class_test((index_peak_reco < 0) || (index_peak_reio < 0),
+                  ppt->error_message,
+                  "Could not identify recombination and reionization peaks in the visibility function for alpha splitting.");
+
+        /*
+        * Step 3:
+        * Find the minimum of the actual visibility function between the two peaks.
+        * This valley is the center of the transition between the two visibility bumps.
+        */
+        index_start = MIN(index_peak_reco,index_peak_reio);
+        index_end   = MAX(index_peak_reco,index_peak_reio);
+        index_valley = index_start;
+        g_valley = pth->thermodynamics_table[index_start*pth->th_size + pth->index_th_g];
+
+        for (index_th = index_start; index_th <= index_end; index_th++) {
+          const double g_tab =
+            pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+
+          if (g_tab < g_valley) {
+            g_valley = g_tab;
+            index_valley = index_th;
+          }
+        }
+
+        /* This was missing */
+        z_split = pth->z_table[index_valley];
+
+        /*
+        * Step 4:
+        * Keep only the two compact visibility neighborhoods around the actual
+        * recombination and reionization peaks.
+        */
+        {
+          g_reco = 0.0;
+          g_reio = 0.0;
+
+          if (z_alpha >= z_split) {
+            g_reco = g;
+          }
+          else {
+            g_reio = g;
+          }
+        }
+
+        _set_source_(ppt->index_tp_alpha) =
+          (-0.5 * ppr->lambda_over_f) * g * delta_chi_for_alpha;
+
+        alpha_reco_source =
+          (-0.5 * ppr->lambda_over_f) * g_reco * delta_chi_for_alpha;
+
+        alpha_reio_source =
+          (-0.5 * ppr->lambda_over_f) * g_reio * delta_chi_for_alpha;
+
+        _set_source_(ppt->index_tp_alpha_reco) = alpha_reco_source;
+        _set_source_(ppt->index_tp_alpha_reio) = alpha_reio_source;
+
+        if ((z_alpha < 20.0) || (z_alpha > 800.0 && z_alpha < 1400.0)) {
+          double alpha_full  = _set_source_(ppt->index_tp_alpha);
+          double alpha_reco  = _set_source_(ppt->index_tp_alpha_reco);
+          double alpha_reio  = _set_source_(ppt->index_tp_alpha_reio);
+          double alpha_split = alpha_reco + alpha_reio;
+
+          printf("z=%g  g=%e  g_reco=%e  g_reio=%e  gdiff=%e | alpha=%e  alpha_reco=%e  alpha_reio=%e  alpha_split=%e  adiff=%e\n",
+                z_alpha,
+                g,
+                g_reco,
+                g_reio,
+                g - (g_reco + g_reio),
+                alpha_full,
+                alpha_reco,
+                alpha_reio,
+                alpha_split,
+                alpha_full - alpha_split);
+        }
+      }
+    }
+  
+    /* delta_dr */
+    if (ppt->has_source_delta_dr == _TRUE_) {
+      f_dr = pow(a2/pba->H0,2)*pvecback[pba->index_bg_rho_dr];
+
+===== visibility split helper if present =====
+7628:    double z_split_cmb = -1.0;
+7632:      double g_peak_reco_cmb = -1.0;
+7633:      double g_peak_reio_cmb = -1.0;
+7634:      int index_peak_reco_cmb = -1;
+7635:      int index_peak_reio_cmb = -1;
+7638:      int index_valley_cmb;
+7646:        if (g_tab > g_peak_reco_cmb) {
+7647:          g_peak_reco_cmb = g_tab;
+7648:          index_peak_reco_cmb = index_th;
+7661:        if ((index_th < index_peak_reco_cmb) && (g_tab >= g_prev) && (g_tab > g_next)) {
+7662:          if (g_tab > g_peak_reio_cmb) {
+7663:            g_peak_reio_cmb = g_tab;
+7664:            index_peak_reio_cmb = index_th;
+7670:      if (index_peak_reio_cmb < 0) {
+7671:        for (index_th = 0; index_th < index_peak_reco_cmb; index_th++) {
+7675:          if (g_tab > g_peak_reio_cmb) {
+7676:            g_peak_reio_cmb = g_tab;
+7677:            index_peak_reio_cmb = index_th;
+7682:      class_test((index_peak_reco_cmb < 0) || (index_peak_reio_cmb < 0),
+7686:      index_start_cmb = MIN(index_peak_reco_cmb,index_peak_reio_cmb);
+7687:      index_end_cmb   = MAX(index_peak_reco_cmb,index_peak_reio_cmb);
+7689:      index_valley_cmb = index_start_cmb;
+7699:          index_valley_cmb = index_th;
+7703:      z_split_cmb = pth->z_table[index_valley_cmb];
+7815:        if (z >= z_split_cmb) {
+7846:      double g_peak_reco_p = -1.0;
+7847:      double g_peak_reio_p = -1.0;
+7848:      double z_peak_reco_p = -1.0;
+7849:      double z_peak_reio_p = -1.0;
+7851:      double z_split_p;
+7852:      int index_peak_reco_p = -1;
+7853:      int index_peak_reio_p = -1;
+7856:      int index_valley_p;
+7863:        if (g_tab > g_peak_reco_p) {
+7864:          g_peak_reco_p = g_tab;
+7865:          z_peak_reco_p = pth->z_table[index_th];
+7866:          index_peak_reco_p = index_th;
+7879:        if ((z_tab < z_peak_reco_p) && (g_tab >= g_prev) && (g_tab > g_next)) {
+7880:          if (g_tab > g_peak_reio_p) {
+7881:            g_peak_reio_p = g_tab;
+7882:            z_peak_reio_p = z_tab;
+7883:            index_peak_reio_p = index_th;
+7888:      if (index_peak_reio_p < 0) {
+7894:          if ((z_tab < z_peak_reco_p) && (g_tab > g_peak_reio_p)) {
+7895:            g_peak_reio_p = g_tab;
+7896:            z_peak_reio_p = z_tab;
+7897:            index_peak_reio_p = index_th;
+7902:      class_test((index_peak_reco_p < 0) || (index_peak_reio_p < 0),
+7906:      index_start_p = MIN(index_peak_reco_p,index_peak_reio_p);
+7907:      index_end_p   = MAX(index_peak_reco_p,index_peak_reio_p);
+7908:      index_valley_p = index_start_p;
+7917:          index_valley_p = index_th;
+7921:      z_split_p = pth->z_table[index_valley_p];
+7923:      if (z_p >= z_split_p) {
+8161:        double z_peak_reco = -1.0;
+8162:        double z_peak_reio = -1.0;
+8163:        double g_peak_reco = -1.0;
+8164:        double g_peak_reio = -1.0;
+8169:        int index_peak_reco = -1;
+8170:        int index_peak_reio = -1;
+8173:        int index_valley;
+8183:          if (g_tab > g_peak_reco) {
+8184:            g_peak_reco = g_tab;
+8185:            z_peak_reco = pth->z_table[index_th];
+8186:            index_peak_reco = index_th;
+8204:          if ((z_tab < z_peak_reco) && (g_tab >= g_prev) && (g_tab > g_next)) {
+8205:            if (g_tab > g_peak_reio) {
+8206:              g_peak_reio = g_tab;
+8207:              z_peak_reio = z_tab;
+8208:              index_peak_reio = index_th;
+8217:        if (index_peak_reio < 0) {
+8223:            if ((z_tab < z_peak_reco) && (g_tab > g_peak_reio)) {
+8224:              g_peak_reio = g_tab;
+8225:              z_peak_reio = z_tab;
+8226:              index_peak_reio = index_th;
+8231:        class_test((index_peak_reco < 0) || (index_peak_reio < 0),
+8240:        index_start = MIN(index_peak_reco,index_peak_reio);
+8241:        index_end   = MAX(index_peak_reco,index_peak_reio);
+8242:        index_valley = index_start;
+8251:            index_valley = index_th;
+8256:        z_split = pth->z_table[index_valley];
