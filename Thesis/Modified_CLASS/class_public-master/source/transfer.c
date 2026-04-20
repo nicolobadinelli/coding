@@ -2068,10 +2068,10 @@ int transfer_source_tau_size(
       *tau_size = ppt->tau_size;
 
     if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reco))
-      *tau_size = 1;
+      *tau_size = ppt->tau_size;
 
     if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reio))
-      *tau_size = 1;
+      *tau_size = ppt->tau_size;
 
     /* cmb lensing potential */
     if ((ppt->has_cl_cmb_lensing_potential == _TRUE_) && (index_tt == ptr->index_tt_lcmb)) {
@@ -2877,42 +2877,35 @@ int transfer_sources(
 
       else if (is_tomo_alpha == _TRUE_) {
 
+        tau_size = ppt->tau_size;
         is_reco_channel = (index_tt == ptr->index_tt_alpha_reco);
         is_reio_channel = (index_tt == ptr->index_tt_alpha_reio);
 
-        /* Approximate g(eta) by localized emission at the visibility peaks. */
-        if (is_reco_channel == _TRUE_) {
-          class_call(transfer_store_localized_peak_source(ppt,
-                                                          ptr,
-                                                          interpolated_sources,
-                                                          tau_rec,
-                                                          tau0,
-                                                          sources,
-                                                          tau0_minus_tau,
-                                                          w_trapz,
-                                                          &tau_size),
-                     ptr->error_message,
-                     ptr->error_message);
+        /* Apply the same step-function windowing as for T and E tomographic
+           channels: the alpha source S_alpha = g(tau)*(-lambda/2f)*delta_chi
+           already contains the visibility function, so integrating with a
+           step function at tau_tomo_split correctly separates the
+           recombination and reionization contributions. */
+        for (index_tau=0; index_tau < ppt->tau_size; index_tau++) {
+          tau = ppt->tau_sampling[index_tau];
+          reco_part = (tau <= tau_tomo_split) ? interpolated_sources[index_tau] : 0.0;
+
+          if (is_reco_channel == _TRUE_)
+            sources[index_tau] = reco_part;
+          else if (is_reio_channel == _TRUE_)
+            sources[index_tau] = interpolated_sources[index_tau] - reco_part;
+          else
+            sources[index_tau] = interpolated_sources[index_tau];
+
+          tau0_minus_tau[index_tau] = tau0 - tau;
         }
-        else if ((is_reio_channel == _TRUE_) && (ptr->has_tomo_peak_reio == _TRUE_)) {
-          class_call(transfer_store_localized_peak_source(ppt,
-                                                          ptr,
-                                                          interpolated_sources,
-                                                          ptr->tau_tomo_peak_reio,
-                                                          tau0,
-                                                          sources,
-                                                          tau0_minus_tau,
-                                                          w_trapz,
-                                                          &tau_size),
-                     ptr->error_message,
-                     ptr->error_message);
-        }
-        else {
-          tau_size = 1;
-          sources[0] = 0.0;
-          tau0_minus_tau[0] = tau0 - tau_rec;
-          w_trapz[0] = 1.0;
-        }
+
+        class_call(array_trapezoidal_mweights(tau0_minus_tau,
+                                              tau_size,
+                                              w_trapz,
+                                              ptr->error_message),
+                   ptr->error_message,
+                   ptr->error_message);
       }
 
       /* lensing source: throw away times before recombination, and multiply psi by window function */
@@ -4809,13 +4802,19 @@ int transfer_select_radial_function(
 
     if (ppt->has_cl_cmb_temperature == _TRUE_) {
 
-      if (index_tt == ptr->index_tt_t0) {
+      if ((index_tt == ptr->index_tt_t0) ||
+          (index_tt == ptr->index_tt_t0_reco) ||
+          (index_tt == ptr->index_tt_t0_reio)) {
         *radial_type = SCALAR_TEMPERATURE_0;
       }
-      if (index_tt == ptr->index_tt_t1) {
+      if ((index_tt == ptr->index_tt_t1) ||
+          (index_tt == ptr->index_tt_t1_reco) ||
+          (index_tt == ptr->index_tt_t1_reio)) {
         *radial_type = SCALAR_TEMPERATURE_1;
       }
-      if (index_tt == ptr->index_tt_t2) {
+      if ((index_tt == ptr->index_tt_t2) ||
+          (index_tt == ptr->index_tt_t2_reco) ||
+          (index_tt == ptr->index_tt_t2_reio)) {
         *radial_type = SCALAR_TEMPERATURE_2;
       }
     }

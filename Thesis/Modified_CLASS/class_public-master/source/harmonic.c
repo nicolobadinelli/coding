@@ -1957,29 +1957,23 @@ int harmonic_compute_cl(
       if (!isfinite(transfer_ic1_temp_reio) ||
           !isfinite(transfer_ic2_temp_reio) ||
           !isfinite(transfer_ic1_e_reio) ||
-          !isfinite(transfer_ic2_e_reio) ||
-          !isfinite(transfer_ic1[ptr->index_tt_alpha_reio]) ||
-          !isfinite(transfer_ic2[ptr->index_tt_alpha_reio])) {
-        printf("BAD REIO TRANSFER: l=%d q=%d k=%e | "
-               "T1_reio=%e T2_reio=%e E1_reio=%e E2_reio=%e A1_reio=%e A2_reio=%e\n",
-               index_l, index_q, k,
-               transfer_ic1_temp_reio, transfer_ic2_temp_reio,
-               transfer_ic1_e_reio, transfer_ic2_e_reio,
-               transfer_ic1[ptr->index_tt_alpha_reio],
-               transfer_ic2[ptr->index_tt_alpha_reio]);
+          !isfinite(transfer_ic2_e_reio)) {
         class_stop(phr->error_message,
-                   "Non-finite reionization transfer found in harmonic_compute_cl");
+                   "Non-finite reionization transfer found in harmonic_compute_cl at l=%d q=%d k=%e: T1_reio=%e T2_reio=%e E1_reio=%e E2_reio=%e",
+                   index_l, index_q, k,
+                   transfer_ic1_temp_reio, transfer_ic2_temp_reio,
+                   transfer_ic1_e_reio, transfer_ic2_e_reio);
       }
 
-  
-
-    /* THEN print */
-    /* printf("l=%g k=%e | Ttot=%e Tsplit=%e diffT=%e | Etot=%e Esplit=%e diffE=%e | Atot=%e Asplit=%e diffA=%e\n",
-          l, k,
-          transfer_ic1_temp, T_sum, transfer_ic1_temp - T_sum,
-          transfer_ic1_e, E_sum, transfer_ic1_e - E_sum,
-          transfer_ic1[ptr->index_tt_alpha], A_sum,
-          transfer_ic1[ptr->index_tt_alpha] - A_sum); */
+      if (ppt->has_source_alpha == _TRUE_) {
+        class_test(!isfinite(transfer_ic1[ptr->index_tt_alpha_reio]) ||
+                   !isfinite(transfer_ic2[ptr->index_tt_alpha_reio]),
+                   phr->error_message,
+                   "Non-finite alpha reionization transfer at l=%d q=%d k=%e: A1=%e A2=%e",
+                   index_l, index_q, k,
+                   transfer_ic1[ptr->index_tt_alpha_reio],
+                   transfer_ic2[ptr->index_tt_alpha_reio]);
+      }
   }
 }
 
@@ -2113,20 +2107,17 @@ int harmonic_compute_cl(
         * factor;
       cl_integrand_te_reio[3*index_q + 2] = 0.0;
 
-      if (!isfinite(cl_integrand_ee_reco[3*index_q + 1]) ||
-          !isfinite(cl_integrand_ee_reio[3*index_q + 1]) ||
-          !isfinite(cl_integrand_te_reco[3*index_q + 1]) ||
-          !isfinite(cl_integrand_te_reio[3*index_q + 1])) {
-        printf("BAD BLOCK INTEGRAND: l=%d q=%d k=%e | "
-               "EE_reco=%e EE_reio=%e TE_reco=%e TE_reio=%e\n",
-               index_l, index_q, k,
-               cl_integrand_ee_reco[3*index_q + 1],
-               cl_integrand_ee_reio[3*index_q + 1],
-               cl_integrand_te_reco[3*index_q + 1],
-               cl_integrand_te_reio[3*index_q + 1]);
-        class_stop(phr->error_message,
-                   "Non-finite reco/reio block integrand in harmonic_compute_cl");
-      }
+      class_test(!isfinite(cl_integrand_ee_reco[3*index_q + 1]) ||
+                 !isfinite(cl_integrand_ee_reio[3*index_q + 1]) ||
+                 !isfinite(cl_integrand_te_reco[3*index_q + 1]) ||
+                 !isfinite(cl_integrand_te_reio[3*index_q + 1]),
+                 phr->error_message,
+                 "Non-finite reco/reio block integrand at l=%d q=%d k=%e: EE_reco=%e EE_reio=%e TE_reco=%e TE_reio=%e",
+                 index_l, index_q, k,
+                 cl_integrand_ee_reco[3*index_q + 1],
+                 cl_integrand_ee_reio[3*index_q + 1],
+                 cl_integrand_te_reco[3*index_q + 1],
+                 cl_integrand_te_reio[3*index_q + 1]);
 
     if (phr->has_tt == _TRUE_)
       cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_tt]=
