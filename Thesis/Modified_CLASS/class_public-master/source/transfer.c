@@ -2392,31 +2392,6 @@ int transfer_compute_for_each_q(
                                                        &radial_type),
                        ptr->error_message,
                        ptr->error_message);
-          if (_scalars_ && index_ic == 0 && index_q == 121) {
-            if (index_tt == ptr->index_tt_t0 ||
-                index_tt == ptr->index_tt_t0_reco ||
-                index_tt == ptr->index_tt_t0_reio ||
-                index_tt == ptr->index_tt_t1 ||
-                index_tt == ptr->index_tt_t1_reco ||
-                index_tt == ptr->index_tt_t1_reio ||
-                index_tt == ptr->index_tt_t2 ||
-                index_tt == ptr->index_tt_t2_reco ||
-                index_tt == ptr->index_tt_t2_reio ||
-                index_tt == ptr->index_tt_e ||
-                index_tt == ptr->index_tt_e_reco ||
-                index_tt == ptr->index_tt_e_reio ||
-                index_tt == ptr->index_tt_alpha ||
-                index_tt == ptr->index_tt_alpha_reco ||
-                index_tt == ptr->index_tt_alpha_reio) {
-
-              double s0 = 0.0;
-              if (*tau_size > 0) s0 = sources[0];
-
-              printf("DEBUG SRC q=%d k=%e index_tt=%d tau_size=%d first_source=%e\\n",
-                    index_q, k, index_tt, *tau_size, s0);
-            }
-          }
-
             for (index_l = 0; index_l < ptr->l_size[index_md]; index_l++) {
 
               l = (double)ptr->l[index_l];
