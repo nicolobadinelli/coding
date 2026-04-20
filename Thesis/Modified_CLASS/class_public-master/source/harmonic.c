@@ -252,6 +252,122 @@ static int harmonic_compute_alpha0_sharp_split(
   return _SUCCESS_;
 }
 
+static int harmonic_is_tomo_diag_ell(int ell) {
+
+  return ((ell == 2) || (ell == 5) || (ell == 10) || (ell == 20));
+}
+
+static int harmonic_is_tomo_diag_k(double k) {
+
+  static const double diag_k_targets[3] = {1.0e-5, 5.0e-5, 1.0e-4};
+  int index_k;
+
+  for (index_k = 0; index_k < 3; index_k++) {
+    if (fabs(k/diag_k_targets[index_k] - 1.0) < 1.0e-12) {
+      return _TRUE_;
+    }
+  }
+
+  return _FALSE_;
+}
+
+static void harmonic_diagnostic_k_range(
+                                        double * cl_integrand,
+                                        int cl_integrand_num_columns,
+                                        int index_ct,
+                                        size_t q_size,
+                                        double * k_peak,
+                                        double * k_lo,
+                                        double * k_hi
+                                        ) {
+
+  size_t index_q;
+  size_t index_peak = 0;
+  size_t index_lo = 0;
+  size_t index_hi = 0;
+  double total_weight = 0.0;
+  double cumulative_weight = 0.0;
+  double peak_weight = -1.0;
+
+  *k_peak = 0.0;
+  *k_lo = 0.0;
+  *k_hi = 0.0;
+
+  if ((index_ct < 0) || (q_size == 0)) {
+    return;
+  }
+
+  for (index_q = 0; index_q < q_size; index_q++) {
+    double k = cl_integrand[index_q*cl_integrand_num_columns + 0];
+    double value = fabs(cl_integrand[index_q*cl_integrand_num_columns + 1 + index_ct]);
+    double dk;
+
+    if (q_size == 1) {
+      dk = 1.0;
+    }
+    else if (index_q == 0) {
+      dk = 0.5 * (cl_integrand[cl_integrand_num_columns + 0] - k);
+    }
+    else if (index_q == q_size - 1) {
+      dk = 0.5 * (k - cl_integrand[(index_q-1)*cl_integrand_num_columns + 0]);
+    }
+    else {
+      dk = 0.5 * (cl_integrand[(index_q+1)*cl_integrand_num_columns + 0]
+                  - cl_integrand[(index_q-1)*cl_integrand_num_columns + 0]);
+    }
+
+    value *= fabs(dk);
+    total_weight += value;
+
+    if (value > peak_weight) {
+      peak_weight = value;
+      index_peak = index_q;
+    }
+  }
+
+  *k_peak = cl_integrand[index_peak*cl_integrand_num_columns + 0];
+
+  if (total_weight <= 0.0) {
+    *k_lo = *k_peak;
+    *k_hi = *k_peak;
+    return;
+  }
+
+  for (index_q = 0; index_q < q_size; index_q++) {
+    double k = cl_integrand[index_q*cl_integrand_num_columns + 0];
+    double value = fabs(cl_integrand[index_q*cl_integrand_num_columns + 1 + index_ct]);
+    double dk;
+
+    if (q_size == 1) {
+      dk = 1.0;
+    }
+    else if (index_q == 0) {
+      dk = 0.5 * (cl_integrand[cl_integrand_num_columns + 0] - k);
+    }
+    else if (index_q == q_size - 1) {
+      dk = 0.5 * (k - cl_integrand[(index_q-1)*cl_integrand_num_columns + 0]);
+    }
+    else {
+      dk = 0.5 * (cl_integrand[(index_q+1)*cl_integrand_num_columns + 0]
+                  - cl_integrand[(index_q-1)*cl_integrand_num_columns + 0]);
+    }
+
+    cumulative_weight += value * fabs(dk);
+
+    if ((index_lo == 0) && (cumulative_weight >= 0.1 * total_weight)) {
+      index_lo = index_q;
+    }
+
+    if ((index_hi == 0) && (cumulative_weight >= 0.9 * total_weight)) {
+      index_hi = index_q;
+      break;
+    }
+  }
+
+  *k_lo = cl_integrand[index_lo*cl_integrand_num_columns + 0];
+  *k_hi = cl_integrand[index_hi*cl_integrand_num_columns + 0];
+}
+
 /* ============================================================
  * ACB TOMOGRAPHY: Wigner 3j helper
  *
@@ -1770,6 +1886,12 @@ int harmonic_compute_cl(
   double k;
   double clvalue;
   int index_ic1_ic2;
+  double transfer_ic1_temp=0.;
+  double transfer_ic2_temp=0.;
+  double transfer_ic1_temp_reco=0.;
+  double transfer_ic2_temp_reco=0.;
+  double transfer_ic1_temp_reio=0.;
+  double transfer_ic2_temp_reio=0.;
 
   double * cl_integrand_ee_reco = NULL;
   double * cl_integrand_ee_reio = NULL;
@@ -1793,30 +1915,12 @@ int harmonic_compute_cl(
   double q_min;
   double k_min;
   double l;
-  /* Total temperature transfer */
-  double transfer_ic1_temp = 0.;
-  double transfer_ic2_temp = 0.;
-
-  /* Recombination-only temperature transfer */
-  double transfer_ic1_temp_reco = 0.;
-  double transfer_ic2_temp_reco = 0.;
-
-  /* Reionization-only temperature transfer */
-  double transfer_ic1_temp_reio = 0.;
-  double transfer_ic2_temp_reio = 0.;
-
-  /* Total E-polarization transfer */
   double transfer_ic1_e = 0.;
   double transfer_ic2_e = 0.;
-
-  /* Recombination-only E-polarization transfer */
   double transfer_ic1_e_reco = 0.;
   double transfer_ic2_e_reco = 0.;
-
-  /* Reionization-only E-polarization transfer */
   double transfer_ic1_e_reio = 0.;
   double transfer_ic2_e_reio = 0.;
-  
     
 
   l = phr->l[index_l];
@@ -1891,17 +1995,9 @@ int harmonic_compute_cl(
 
       if (_scalars_) {
 
-                /* Total temperature transfer */
-        transfer_ic1_temp =
-          transfer_ic1[ptr->index_tt_t0] +
-          transfer_ic1[ptr->index_tt_t1] +
-          transfer_ic1[ptr->index_tt_t2];
-        transfer_ic2_temp =
-          transfer_ic2[ptr->index_tt_t0] +
-          transfer_ic2[ptr->index_tt_t1] +
-          transfer_ic2[ptr->index_tt_t2];
+        transfer_ic1_temp = transfer_ic1[ptr->index_tt_t0] + transfer_ic1[ptr->index_tt_t1] + transfer_ic1[ptr->index_tt_t2];
+        transfer_ic2_temp = transfer_ic2[ptr->index_tt_t0] + transfer_ic2[ptr->index_tt_t1] + transfer_ic2[ptr->index_tt_t2];
 
-        /* Recombination-only temperature transfer */
         transfer_ic1_temp_reco =
           transfer_ic1[ptr->index_tt_t0_reco] +
           transfer_ic1[ptr->index_tt_t1_reco] +
@@ -1910,8 +2006,6 @@ int harmonic_compute_cl(
           transfer_ic2[ptr->index_tt_t0_reco] +
           transfer_ic2[ptr->index_tt_t1_reco] +
           transfer_ic2[ptr->index_tt_t2_reco];
-
-        /* Reionization-only temperature transfer */
         transfer_ic1_temp_reio =
           transfer_ic1[ptr->index_tt_t0_reio] +
           transfer_ic1[ptr->index_tt_t1_reio] +
@@ -1942,36 +2036,19 @@ int harmonic_compute_cl(
   if (_scalars_) {
 
     /* FIRST assign values */
-        /* Total E transfer */
-      transfer_ic1_e = transfer_ic1[ptr->index_tt_e];
-      transfer_ic2_e = transfer_ic2[ptr->index_tt_e];
+    transfer_ic1_e = transfer_ic1[ptr->index_tt_e];
+    transfer_ic2_e = transfer_ic2[ptr->index_tt_e];
 
-      /* Recombination-only E transfer */
-      transfer_ic1_e_reco = transfer_ic1[ptr->index_tt_e_reco];
-      transfer_ic2_e_reco = transfer_ic2[ptr->index_tt_e_reco];
+    transfer_ic1_e_reco = transfer_ic1[ptr->index_tt_e_reco];
+    transfer_ic2_e_reco = transfer_ic2[ptr->index_tt_e_reco];
+    transfer_ic1_e_reio = transfer_ic1[ptr->index_tt_e_reio];
+    transfer_ic2_e_reio = transfer_ic2[ptr->index_tt_e_reio];
 
-      /* Reionization-only E transfer */
-      transfer_ic1_e_reio = transfer_ic1[ptr->index_tt_e_reio];
-      transfer_ic2_e_reio = transfer_ic2[ptr->index_tt_e_reio];
 
-      if (!isfinite(transfer_ic1_temp_reio) ||
-          !isfinite(transfer_ic2_temp_reio) ||
-          !isfinite(transfer_ic1_e_reio) ||
-          !isfinite(transfer_ic2_e_reio) ||
-          !isfinite(transfer_ic1[ptr->index_tt_alpha_reio]) ||
-          !isfinite(transfer_ic2[ptr->index_tt_alpha_reio])) {
-        printf("BAD REIO TRANSFER: l=%d q=%d k=%e | "
-               "T1_reio=%e T2_reio=%e E1_reio=%e E2_reio=%e A1_reio=%e A2_reio=%e\n",
-               index_l, index_q, k,
-               transfer_ic1_temp_reio, transfer_ic2_temp_reio,
-               transfer_ic1_e_reio, transfer_ic2_e_reio,
-               transfer_ic1[ptr->index_tt_alpha_reio],
-               transfer_ic2[ptr->index_tt_alpha_reio]);
-        class_stop(phr->error_message,
-                   "Non-finite reionization transfer found in harmonic_compute_cl");
-      }
-
-  
+    /* THEN compute sums */
+    double T_sum = transfer_ic1_temp;
+    double E_sum = transfer_ic1_e;
+    double A_sum = transfer_ic1[ptr->index_tt_alpha];
 
     /* THEN print */
     /* printf("l=%g k=%e | Ttot=%e Tsplit=%e diffT=%e | Etot=%e Esplit=%e diffE=%e | Atot=%e Asplit=%e diffA=%e\n",
@@ -1982,6 +2059,25 @@ int harmonic_compute_cl(
           transfer_ic1[ptr->index_tt_alpha] - A_sum); */
   }
 }
+
+    if (_scalars_ &&
+        (phr->harmonic_verbose > 0) &&
+        (index_ic1 == 0) &&
+        (index_ic2 == 0) &&
+        (harmonic_is_tomo_diag_ell((int)l) == _TRUE_) &&
+        (harmonic_is_tomo_diag_k(k) == _TRUE_)) {
+      fprintf(stdout,
+              "[tomo transfer] l=%d k=%e | T_reco=%e T_reio=%e E_reco=%e E_reio=%e A_reco=%e A_reio=%e\n",
+              (int)l,
+              k,
+              transfer_ic1_temp_reco,
+              transfer_ic1_temp_reio,
+              transfer_ic1_e_reco,
+              transfer_ic1_e_reio,
+              transfer_ic1[ptr->index_tt_alpha_reco],
+              transfer_ic1[ptr->index_tt_alpha_reio]);
+      fflush(stdout);
+    }
 
     if (ppt->has_cl_number_count == _TRUE_ && _scalars_) {
 
@@ -2086,7 +2182,7 @@ int harmonic_compute_cl(
         * factor;
       cl_integrand_ee_reco[3*index_q + 2] = 0.0;
 
-      /* EE reio block: use pure reionization transfers directly */
+      /* EE reio block: keep only the pure reionization contribution */
       cl_integrand_ee_reio[3*index_q + 0] = k;
       cl_integrand_ee_reio[3*index_q + 1] =
         primordial_pk[index_ic1_ic2]
@@ -2104,7 +2200,7 @@ int harmonic_compute_cl(
         * factor;
       cl_integrand_te_reco[3*index_q + 2] = 0.0;
 
-      /* TE reio block: use pure reionization transfers directly */
+      /* TE reio block: keep only the pure reionization contribution */
       cl_integrand_te_reio[3*index_q + 0] = k;
       cl_integrand_te_reio[3*index_q + 1] =
         primordial_pk[index_ic1_ic2]
@@ -2112,21 +2208,7 @@ int harmonic_compute_cl(
                + transfer_ic1_e_reio    * transfer_ic2_temp_reio)
         * factor;
       cl_integrand_te_reio[3*index_q + 2] = 0.0;
-
-      if (!isfinite(cl_integrand_ee_reco[3*index_q + 1]) ||
-          !isfinite(cl_integrand_ee_reio[3*index_q + 1]) ||
-          !isfinite(cl_integrand_te_reco[3*index_q + 1]) ||
-          !isfinite(cl_integrand_te_reio[3*index_q + 1])) {
-        printf("BAD BLOCK INTEGRAND: l=%d q=%d k=%e | "
-               "EE_reco=%e EE_reio=%e TE_reco=%e TE_reio=%e\n",
-               index_l, index_q, k,
-               cl_integrand_ee_reco[3*index_q + 1],
-               cl_integrand_ee_reio[3*index_q + 1],
-               cl_integrand_te_reco[3*index_q + 1],
-               cl_integrand_te_reio[3*index_q + 1]);
-        class_stop(phr->error_message,
-                   "Non-finite reco/reio block integrand in harmonic_compute_cl");
-      }
+    }
 
     if (phr->has_tt == _TRUE_)
       cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_tt]=
@@ -2191,20 +2273,19 @@ int harmonic_compute_cl(
         * transfer_ic2[ptr->index_tt_alpha_reco]
         * factor;
 
-        if (_scalars_ && (phr->has_aa_reio == _TRUE_))
-      cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_aa_reio] =
+    if (_scalars_ && (phr->has_aa_reio == _TRUE_))
+      cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_aa_reio]=
         primordial_pk[index_ic1_ic2]
         * transfer_ic1[ptr->index_tt_alpha_reio]
         * transfer_ic2[ptr->index_tt_alpha_reio]
         * factor;
-      
-    
+
     /* alpha-T cross spectrum */
     if (_scalars_ && (phr->has_at == _TRUE_))
       cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_at] =
         primordial_pk[index_ic1_ic2]
         * 0.5*(transfer_ic1[ptr->index_tt_alpha] * transfer_ic2_temp +
-              transfer_ic1_temp * transfer_ic2[ptr->index_tt_alpha])
+               transfer_ic1_temp * transfer_ic2[ptr->index_tt_alpha])
         * factor;
 
     /* alpha-T reco */
@@ -2212,23 +2293,23 @@ int harmonic_compute_cl(
       cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_at_reco] =
         primordial_pk[index_ic1_ic2]
         * 0.5*(transfer_ic1[ptr->index_tt_alpha_reco] * transfer_ic2_temp_reco +
-              transfer_ic1_temp_reco * transfer_ic2[ptr->index_tt_alpha_reco])
+               transfer_ic1_temp_reco * transfer_ic2[ptr->index_tt_alpha_reco])
         * factor;
 
-        /* alpha-T reio: use pure reionization transfers directly */
+    /* alpha-T reio */
     if (_scalars_ && (phr->has_at_reio == _TRUE_))
       cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_at_reio] =
         primordial_pk[index_ic1_ic2]
-        * 0.5 * (transfer_ic1[ptr->index_tt_alpha_reio] * transfer_ic2_temp_reio +
-                 transfer_ic1_temp_reio * transfer_ic2[ptr->index_tt_alpha_reio])
+        * 0.5*(transfer_ic1[ptr->index_tt_alpha_reio] * transfer_ic2_temp_reio +
+               transfer_ic1_temp_reio * transfer_ic2[ptr->index_tt_alpha_reio])
         * factor;
 
     /* alpha-E cross spectrum */
     if (_scalars_ && (phr->has_ae == _TRUE_))
       cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_ae] =
         primordial_pk[index_ic1_ic2]
-        * 0.5*(transfer_ic1[ptr->index_tt_alpha] * transfer_ic2[ptr->index_tt_e] +
-              transfer_ic1[ptr->index_tt_e] * transfer_ic2[ptr->index_tt_alpha])
+        * 0.5*(transfer_ic1[ptr->index_tt_alpha] * transfer_ic2_e +
+               transfer_ic1_e * transfer_ic2[ptr->index_tt_alpha])
         * factor;
 
     /* alpha-E reco */
@@ -2236,15 +2317,15 @@ int harmonic_compute_cl(
       cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_ae_reco] =
         primordial_pk[index_ic1_ic2]
         * 0.5*(transfer_ic1[ptr->index_tt_alpha_reco] * transfer_ic2_e_reco +
-              transfer_ic1_e_reco * transfer_ic2[ptr->index_tt_alpha_reco])
+               transfer_ic1_e_reco * transfer_ic2[ptr->index_tt_alpha_reco])
         * factor;
 
-    /* alpha-E reio: use pure reionization transfers directly */
+    /* alpha-E reio */
     if (_scalars_ && (phr->has_ae_reio == _TRUE_))
       cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_ae_reio] =
         primordial_pk[index_ic1_ic2]
-        * 0.5 * (transfer_ic1[ptr->index_tt_alpha_reio] * transfer_ic2_e_reio +
-                 transfer_ic1_e_reio * transfer_ic2[ptr->index_tt_alpha_reio])
+        * 0.5*(transfer_ic1[ptr->index_tt_alpha_reio] * transfer_ic2_e_reio +
+               transfer_ic1_e_reio * transfer_ic2[ptr->index_tt_alpha_reio])
         * factor;
 
     if (_scalars_ && (phr->has_dd == _TRUE_)) {
@@ -2317,8 +2398,6 @@ int harmonic_compute_cl(
         }
       }
     }
-  }
-  
   }
   if (_scalars_) {
 
@@ -2478,7 +2557,6 @@ int harmonic_compute_cl(
           * transfer_ic2[index_tt]
           * factor;
       }
-
     }
   }
 
@@ -2583,7 +2661,6 @@ int harmonic_compute_cl(
     }
   }
 
-
   if (_scalars_) {
     int cl_offset = (index_l * phr->ic_ic_size[index_md] + index_ic1_ic2) * phr->ct_size;
 
@@ -2598,6 +2675,105 @@ int harmonic_compute_cl(
 
     if (phr->has_te_reio == _TRUE_)
       phr->cl[index_md][cl_offset + phr->index_ct_te_reio] = cl_te_reio;
+
+    if ((phr->harmonic_verbose > 0) &&
+        (index_ic1 == 0) &&
+        (index_ic2 == 0) &&
+        (harmonic_is_tomo_diag_ell((int)l) == _TRUE_)) {
+      double k_peak_aa_reco, k_lo_aa_reco, k_hi_aa_reco;
+      double k_peak_aa_reio, k_lo_aa_reio, k_hi_aa_reio;
+      double k_peak_at_reco, k_lo_at_reco, k_hi_at_reco;
+      double k_peak_at_reio, k_lo_at_reio, k_hi_at_reio;
+      double k_peak_ae_reco, k_lo_ae_reco, k_hi_ae_reco;
+      double k_peak_ae_reio, k_lo_ae_reio, k_hi_ae_reio;
+      double cl_aa = (phr->has_aa == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_aa] : 0.0;
+      double cl_aa_reco = (phr->has_aa_reco == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_aa_reco] : 0.0;
+      double cl_aa_reio = (phr->has_aa_reio == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_aa_reio] : 0.0;
+      double cl_at = (phr->has_at == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_at] : 0.0;
+      double cl_at_reco = (phr->has_at_reco == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_at_reco] : 0.0;
+      double cl_at_reio = (phr->has_at_reio == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_at_reio] : 0.0;
+      double cl_ae = (phr->has_ae == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_ae] : 0.0;
+      double cl_ae_reco = (phr->has_ae_reco == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_ae_reco] : 0.0;
+      double cl_ae_reio = (phr->has_ae_reio == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_ae_reio] : 0.0;
+
+      harmonic_diagnostic_k_range(cl_integrand,
+                                  cl_integrand_num_columns,
+                                  phr->has_aa_reco == _TRUE_ ? phr->index_ct_aa_reco : -1,
+                                  ptr->q_size,
+                                  &k_peak_aa_reco,
+                                  &k_lo_aa_reco,
+                                  &k_hi_aa_reco);
+      harmonic_diagnostic_k_range(cl_integrand,
+                                  cl_integrand_num_columns,
+                                  phr->has_aa_reio == _TRUE_ ? phr->index_ct_aa_reio : -1,
+                                  ptr->q_size,
+                                  &k_peak_aa_reio,
+                                  &k_lo_aa_reio,
+                                  &k_hi_aa_reio);
+      harmonic_diagnostic_k_range(cl_integrand,
+                                  cl_integrand_num_columns,
+                                  phr->has_at_reco == _TRUE_ ? phr->index_ct_at_reco : -1,
+                                  ptr->q_size,
+                                  &k_peak_at_reco,
+                                  &k_lo_at_reco,
+                                  &k_hi_at_reco);
+      harmonic_diagnostic_k_range(cl_integrand,
+                                  cl_integrand_num_columns,
+                                  phr->has_at_reio == _TRUE_ ? phr->index_ct_at_reio : -1,
+                                  ptr->q_size,
+                                  &k_peak_at_reio,
+                                  &k_lo_at_reio,
+                                  &k_hi_at_reio);
+      harmonic_diagnostic_k_range(cl_integrand,
+                                  cl_integrand_num_columns,
+                                  phr->has_ae_reco == _TRUE_ ? phr->index_ct_ae_reco : -1,
+                                  ptr->q_size,
+                                  &k_peak_ae_reco,
+                                  &k_lo_ae_reco,
+                                  &k_hi_ae_reco);
+      harmonic_diagnostic_k_range(cl_integrand,
+                                  cl_integrand_num_columns,
+                                  phr->has_ae_reio == _TRUE_ ? phr->index_ct_ae_reio : -1,
+                                  ptr->q_size,
+                                  &k_peak_ae_reio,
+                                  &k_lo_ae_reio,
+                                  &k_hi_ae_reio);
+
+      fprintf(stdout,
+              "[tomo Cl] l=%d | aa=(reco=%e reio=%e total=%e) | aT=(reco=%e reio=%e total=%e) | aE=(reco=%e reio=%e total=%e)\n",
+              (int)l,
+              cl_aa_reco,
+              cl_aa_reio,
+              cl_aa,
+              cl_at_reco,
+              cl_at_reio,
+              cl_at,
+              cl_ae_reco,
+              cl_ae_reio,
+              cl_ae);
+      fprintf(stdout,
+              "[tomo k-range] l=%d | aa_reco peak=%e range=[%e,%e] | aa_reio peak=%e range=[%e,%e] | aT_reco peak=%e range=[%e,%e] | aT_reio peak=%e range=[%e,%e] | aE_reco peak=%e range=[%e,%e] | aE_reio peak=%e range=[%e,%e]\n",
+              (int)l,
+              k_peak_aa_reco,
+              k_lo_aa_reco,
+              k_hi_aa_reco,
+              k_peak_aa_reio,
+              k_lo_aa_reio,
+              k_hi_aa_reio,
+              k_peak_at_reco,
+              k_lo_at_reco,
+              k_hi_at_reco,
+              k_peak_at_reio,
+              k_lo_at_reio,
+              k_hi_at_reio,
+              k_peak_ae_reco,
+              k_lo_ae_reco,
+              k_hi_ae_reco,
+              k_peak_ae_reio,
+              k_lo_ae_reio,
+              k_hi_ae_reio);
+      fflush(stdout);
+    }
   }
 
   if (ppt->has_cl_number_count == _TRUE_ && _scalars_) {
@@ -2610,10 +2786,11 @@ int harmonic_compute_cl(
     free(cl_integrand_te_reco);
     free(cl_integrand_te_reio);
   }
-     
+
   return _SUCCESS_;
 
 }
+
 /* deprecated functions (since v2.8) */
 
 /**

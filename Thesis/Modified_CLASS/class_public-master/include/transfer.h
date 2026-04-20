@@ -187,8 +187,13 @@ struct transfer {
   double ** k; /**< list of wavenumber values for each requested mode, k[index_md][index_q]. In flat universes k=q. In non-flat universes q and k differ through q2 = k2 + K(1+m), where m=0,1,2 for scalar, vector, tensor. q should be used throughout the transfer module, excepted when interpolating or manipulating the source functions S(k,tau): for a given value of q this should be done in k(q). */
 
   int index_q_flat_approximation; /**< index of the first q value using the flat rescaling approximation */
-  double tau_tomo_peak_reio; /**< conformal time of the reionization visibility peak used to localize birefringence reco/reio channels */
-  short has_tomo_peak_reio; /**< did we identify a separate reionization visibility peak? */
+  double tau_tomo_peak_reco; /**< conformal time of the recombination visibility peak used by the reco/reio split */
+  double tau_tomo_peak_reio; /**< conformal time of the reionization visibility peak used by the reco/reio split */
+  double tau_tomo_sigma_reco; /**< legacy field kept for source compatibility; unused in the visibility-valley split */
+  double tau_tomo_sigma_reio; /**< legacy field kept for source compatibility; unused in the visibility-valley split */
+  short has_tomo_peak_reio; /**< is a separate reionization visibility peak available? */
+  double * tomo_reco_window; /**< visibility-informed reco partition evaluated on ppt->tau_sampling */
+  double * tomo_reio_window; /**< visibility-informed reio partition evaluated on ppt->tau_sampling */
 
   short do_lcmb_full_limber; /**< in this particular run, will we use the full Limber scheme? */
 

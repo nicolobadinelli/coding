@@ -30,6 +30,9 @@
 #include "transfer.h"
 #include "parallel.h"
 
+#define _TOMO_REIO_G_FLOOR_FRAC_ 1e-3
+#define _TOMO_SPLIT_SMOOTH_FRAC_ 0.30
+
 /**
  * Find the visibility minimum between the recombination and reionization
  * peaks. This is the physically relevant split for the reco/reio
@@ -43,6 +46,8 @@ static int transfer_visibility_split_tau(
                                          struct thermodynamics * pth,
                                          double * tau_split
                                          ) {
+
+  (void)pba;
 
   int index_th;
   int reco_peak = -1;
@@ -120,44 +125,56 @@ static int transfer_visibility_split_tau(
     }
   }
 
-  class_call(background_tau_of_z(pba,
-                                 pth->z_table[valley],
-                                 tau_split),
-             pba->error_message,
-             pth->error_message);
+  *tau_split = pth->tau_table[valley];
 
   return _SUCCESS_;
 }
 
 /**
- * Find the secondary visibility peak associated with reionization.
- * This is used to localize the birefringence reco/reio transfer
- * channels following the instantaneous-emission style approximation.
+ * Identify the actual recombination and reionization visibility peaks.
+ *
+ * These peak locations are used to label the reco/reio visibility split
+ * and to set the corresponding low-ell distance scales, while the
+ * active source split itself is performed with the full time history.
  */
-static int transfer_visibility_reio_peak_tau(
-                                             struct thermodynamics * pth,
-                                             double * tau_peak_reio,
-                                             short * has_peak_reio
-                                             ) {
+static int transfer_visibility_peaks(
+                                     struct thermodynamics * pth,
+                                     int * index_peak_reco,
+                                     int * index_peak_reio,
+                                     double * z_peak_reco,
+                                     double * z_peak_reio,
+                                     double * tau_peak_reco,
+                                     double * tau_peak_reio,
+                                     double * g_peak_reco,
+                                     double * g_peak_reio,
+                                     short * has_peak_reio
+                                     ) {
 
   int index_th;
   int reco_peak = -1;
   int reio_peak = -1;
-  double g_peak_reco = -1.0;
-  double g_peak_reio = -1.0;
+  double g_reco = -1.0;
+  double g_reio = -1.0;
   double g_prev;
   double g_mid;
   double g_next;
   double z_reco;
   double z_tab;
 
+  *index_peak_reco = -1;
+  *index_peak_reio = -1;
+  *z_peak_reco = pth->z_rec;
+  *z_peak_reio = pth->z_reio;
+  *tau_peak_reco = pth->tau_rec;
   *tau_peak_reio = pth->conf_time_reio;
+  *g_peak_reco = -1.0;
+  *g_peak_reio = -1.0;
   *has_peak_reio = _FALSE_;
 
   for (index_th = 0; index_th < pth->tt_size; index_th++) {
     g_mid = pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
-    if (g_mid > g_peak_reco) {
-      g_peak_reco = g_mid;
+    if (g_mid > g_reco) {
+      g_reco = g_mid;
       reco_peak = index_th;
     }
   }
@@ -177,8 +194,8 @@ static int transfer_visibility_reio_peak_tau(
     if ((z_tab < z_reco) &&
         (g_mid >= g_prev) &&
         (g_mid > g_next) &&
-        (g_mid > g_peak_reio)) {
-      g_peak_reio = g_mid;
+        (g_mid > g_reio)) {
+      g_reio = g_mid;
       reio_peak = index_th;
     }
   }
@@ -188,15 +205,23 @@ static int transfer_visibility_reio_peak_tau(
       z_tab = pth->z_table[index_th];
       g_mid = pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
 
-      if ((z_tab < z_reco) && (g_mid > g_peak_reio)) {
-        g_peak_reio = g_mid;
+      if ((z_tab < z_reco) && (g_mid > g_reio)) {
+        g_reio = g_mid;
         reio_peak = index_th;
       }
     }
   }
 
+  *index_peak_reco = reco_peak;
+  *z_peak_reco = pth->z_table[reco_peak];
+  *tau_peak_reco = pth->tau_table[reco_peak];
+  *g_peak_reco = g_reco;
+
   if (reio_peak >= 0) {
+    *index_peak_reio = reio_peak;
+    *z_peak_reio = pth->z_table[reio_peak];
     *tau_peak_reio = pth->tau_table[reio_peak];
+    *g_peak_reio = g_reio;
     *has_peak_reio = _TRUE_;
   }
 
@@ -204,9 +229,380 @@ static int transfer_visibility_reio_peak_tau(
 }
 
 /**
- * Store a localized transfer source at a single conformal time. The
- * source amplitude is weighted by the local tau spacing so that the
- * resulting one-point source approximates the original tau integral.
+ * Legacy helper kept for source compatibility.
+ *
+ * In the strict 2023-style tomography we only need the actual peak
+ * locations; no Gaussian widths are used anywhere downstream.
+ */
+static int transfer_visibility_peak_windows(
+                                            struct thermodynamics * pth,
+                                            double * tau_peak_reco,
+                                            double * sigma_reco,
+                                            double * tau_peak_reio,
+                                            double * sigma_reio,
+                                            short * has_peak_reio
+                                            ) {
+
+  int index_peak_reco;
+  int index_peak_reio;
+  int index_th;
+  int valley_index;
+  int index_start;
+  int index_end;
+  int index_left;
+  int index_right;
+  double z_peak_reco;
+  double z_peak_reio;
+  double g_peak_reco;
+  double g_peak_reio;
+  double g_half;
+  double tau_left;
+  double tau_right;
+  double fwhm;
+
+  *tau_peak_reco = pth->tau_rec;
+  *tau_peak_reio = pth->conf_time_reio;
+  *sigma_reco = 0.0;
+  *sigma_reio = 0.0;
+  class_call(transfer_visibility_peaks(pth,
+                                       &index_peak_reco,
+                                       &index_peak_reio,
+                                       &z_peak_reco,
+                                       &z_peak_reio,
+                                       tau_peak_reco,
+                                       tau_peak_reio,
+                                       &g_peak_reco,
+                                       &g_peak_reio,
+                                       has_peak_reio),
+             pth->error_message,
+             pth->error_message);
+
+  if (index_peak_reco >= 0) {
+    g_half = 0.5 * g_peak_reco;
+    index_left = index_peak_reco;
+    while ((index_left > 0) &&
+           (pth->thermodynamics_table[index_left*pth->th_size + pth->index_th_g] > g_half)) {
+      index_left--;
+    }
+    index_right = index_peak_reco;
+    while ((index_right < pth->tt_size - 1) &&
+           (pth->thermodynamics_table[index_right*pth->th_size + pth->index_th_g] > g_half)) {
+      index_right++;
+    }
+
+    tau_left = pth->tau_table[index_left];
+    tau_right = pth->tau_table[index_right];
+    fwhm = fabs(tau_right - tau_left);
+
+    if ((fwhm <= 0.0) && (index_peak_reco > 0)) {
+      fwhm = fabs(pth->tau_table[index_peak_reco] - pth->tau_table[index_peak_reco-1]);
+    }
+    if ((fwhm <= 0.0) && (index_peak_reco < pth->tt_size - 1)) {
+      fwhm = fabs(pth->tau_table[index_peak_reco+1] - pth->tau_table[index_peak_reco]);
+    }
+
+    *sigma_reco = fwhm / (2.0 * sqrt(2.0 * log(2.0)));
+  }
+
+  if ((index_peak_reio >= 0) && (*has_peak_reio == _TRUE_)) {
+    index_start = MIN(index_peak_reco, index_peak_reio);
+    index_end = MAX(index_peak_reco, index_peak_reio);
+    valley_index = index_start;
+
+    for (index_th = index_start + 1; index_th <= index_end; index_th++) {
+      if (pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g] <
+          pth->thermodynamics_table[valley_index*pth->th_size + pth->index_th_g]) {
+        valley_index = index_th;
+      }
+    }
+
+    g_half = 0.5 * g_peak_reio;
+    index_left = index_peak_reio;
+    while ((index_left > 0) &&
+           (index_left != valley_index) &&
+           (pth->thermodynamics_table[index_left*pth->th_size + pth->index_th_g] > g_half)) {
+      index_left--;
+    }
+    index_right = index_peak_reio;
+    while ((index_right < pth->tt_size - 1) &&
+           (index_right != valley_index) &&
+           (pth->thermodynamics_table[index_right*pth->th_size + pth->index_th_g] > g_half)) {
+      index_right++;
+    }
+
+    tau_left = pth->tau_table[index_left];
+    tau_right = pth->tau_table[index_right];
+    fwhm = fabs(tau_right - tau_left);
+
+    if ((fwhm <= 0.0) && (index_peak_reio > 0)) {
+      fwhm = fabs(pth->tau_table[index_peak_reio] - pth->tau_table[index_peak_reio-1]);
+    }
+    if ((fwhm <= 0.0) && (index_peak_reio < pth->tt_size - 1)) {
+      fwhm = fabs(pth->tau_table[index_peak_reio+1] - pth->tau_table[index_peak_reio]);
+    }
+
+    *sigma_reio = fwhm / (2.0 * sqrt(2.0 * log(2.0)));
+  }
+
+  return _SUCCESS_;
+}
+
+/**
+ * Build the visibility split used by the reco/reio channels.
+ *
+ * The localized tomographic pieces are defined as a partition of the
+ * full source history at the minimum of the visibility function
+ * between the recombination and reionization peaks:
+ *
+ *   W_reco(tau) = 1 for tau <= tau_split, 0 otherwise
+ *   W_reio(tau) = 1 - W_reco(tau)
+ */
+static double transfer_tomo_reco_weight(
+                                        double tau,
+                                        double tau_split,
+                                        double tau_peak_reco,
+                                        double tau_peak_reio,
+                                        short has_peak_reio
+                                        ) {
+
+  double left_width;
+  double right_width;
+  double width;
+  double x;
+
+  if (has_peak_reio == _FALSE_) {
+    return 1.0;
+  }
+
+  left_width = fabs(tau_split - tau_peak_reco);
+  right_width = fabs(tau_peak_reio - tau_split);
+
+  width = _TOMO_SPLIT_SMOOTH_FRAC_ * MIN(left_width, right_width);
+
+  if (width <= 0.0) {
+    return (tau <= tau_split) ? 1.0 : 0.0;
+  }
+
+  if (tau <= tau_split - width) {
+    return 1.0;
+  }
+
+  if (tau >= tau_split + width) {
+    return 0.0;
+  }
+
+  x = (tau - (tau_split - width)) / (2.0 * width); /* x in [0,1] */
+
+  /* cosine taper from 1 to 0 */
+  return 0.5 * (1.0 + cos(_PI_ * x));
+}
+
+/**
+ * Interpolate the thermodynamics visibility function to an arbitrary
+ * conformal time. The thermodynamics tables are monotonic in tau but
+ * not necessarily increasing with the table index, so we bracket the
+ * requested time explicitly.
+ */
+static double transfer_visibility_at_tau(
+                                         struct thermodynamics * pth,
+                                         double tau
+                                         ) {
+
+  int index_th;
+  double tau_left;
+  double tau_right;
+  double g_left;
+  double g_right;
+  double fraction;
+
+  if (pth->tt_size <= 0) {
+    return 0.0;
+  }
+
+  if (pth->tt_size == 1) {
+    return pth->thermodynamics_table[pth->index_th_g];
+  }
+
+  for (index_th = 0; index_th < pth->tt_size - 1; index_th++) {
+    tau_left = pth->tau_table[index_th];
+    tau_right = pth->tau_table[index_th + 1];
+
+    if ((tau - tau_left) * (tau - tau_right) <= 0.0) {
+      g_left = pth->thermodynamics_table[index_th * pth->th_size + pth->index_th_g];
+      g_right = pth->thermodynamics_table[(index_th + 1) * pth->th_size + pth->index_th_g];
+
+      if (tau_right == tau_left) {
+        return g_left;
+      }
+
+      fraction = (tau - tau_left) / (tau_right - tau_left);
+
+      return g_left + fraction * (g_right - g_left);
+    }
+  }
+
+  if (fabs(tau - pth->tau_table[0]) < fabs(tau - pth->tau_table[pth->tt_size - 1])) {
+    return pth->thermodynamics_table[pth->index_th_g];
+  }
+
+  return pth->thermodynamics_table[(pth->tt_size - 1) * pth->th_size + pth->index_th_g];
+}
+
+/**
+ * Precompute the reco/reio partition directly on the perturbation
+ * sampling grid. The split must remain a partition of the full source
+ * history, so that reco/reio are finite-width visibility-separated
+ * pieces of the same total source rather than two independently
+ * localized peaks. We start from the valley-centered reco/reio split
+ * and only damp the reio branch once the visibility has fallen well
+ * below the reionization peak, absorbing the remainder back into reco
+ * in order to preserve W_reco + W_reio = 1.
+ */
+static int transfer_precompute_tomo_windows(
+                                            struct perturbations * ppt,
+                                            struct thermodynamics * pth,
+                                            struct transfer * ptr,
+                                            double tau_split,
+                                            double tau_peak_reco,
+                                            double tau_peak_reio,
+                                            double g_peak_reio,
+                                            short has_peak_reio
+                                            ) {
+
+  int index_tau;
+  double tau;
+  double base_reco_weight;
+  double base_reio_weight;
+  double g_interp;
+  double g_floor;
+  double reio_visibility_weight;
+  double reio_weight;
+  double sum_check;
+
+  if (ptr->tomo_reco_window != NULL) {
+    free(ptr->tomo_reco_window);
+    ptr->tomo_reco_window = NULL;
+  }
+
+  if (ptr->tomo_reio_window != NULL) {
+    free(ptr->tomo_reio_window);
+    ptr->tomo_reio_window = NULL;
+  }
+
+  class_alloc(ptr->tomo_reco_window,
+              ppt->tau_size * sizeof(double),
+              ptr->error_message);
+
+  class_alloc(ptr->tomo_reio_window,
+              ppt->tau_size * sizeof(double),
+              ptr->error_message);
+
+  if ((has_peak_reio == _FALSE_) || (g_peak_reio <= 0.0)) {
+    for (index_tau = 0; index_tau < ppt->tau_size; index_tau++) {
+      ptr->tomo_reco_window[index_tau] = 1.0;
+      ptr->tomo_reio_window[index_tau] = 0.0;
+    }
+    return _SUCCESS_;
+  }
+
+  g_floor = _TOMO_REIO_G_FLOOR_FRAC_ * g_peak_reio;
+  sum_check = 0.0;
+
+  for (index_tau = 0; index_tau < ppt->tau_size; index_tau++) {
+    tau = ppt->tau_sampling[index_tau];
+
+    base_reco_weight = transfer_tomo_reco_weight(tau,
+                                                 tau_split,
+                                                 tau_peak_reco,
+                                                 tau_peak_reio,
+                                                 has_peak_reio);
+    base_reio_weight = 1.0 - base_reco_weight;
+
+    g_interp = transfer_visibility_at_tau(pth, tau);
+
+    if (tau <= tau_peak_reio) {
+      reio_visibility_weight = 1.0;
+    }
+    else if (g_interp <= g_floor) {
+      reio_visibility_weight = 0.0;
+    }
+    else {
+      reio_visibility_weight = (g_interp - g_floor) / (g_peak_reio - g_floor);
+      reio_visibility_weight = sqrt(MIN(1.0, MAX(0.0, reio_visibility_weight)));
+    }
+
+    reio_weight = base_reio_weight * reio_visibility_weight;
+    ptr->tomo_reco_window[index_tau] = base_reco_weight;
+    ptr->tomo_reio_window[index_tau] = reio_weight;
+
+    sum_check += ptr->tomo_reco_window[index_tau]
+              +  ptr->tomo_reio_window[index_tau];
+
+    if ((index_tau % 100 == 0) || (index_tau == ppt->tau_size-1)) {
+      printf("[tomo window] tau=%e | g=%e | reco=%e reio=%e\n",
+             tau,
+             g_interp,
+             ptr->tomo_reco_window[index_tau],
+             ptr->tomo_reio_window[index_tau]);
+    }
+  }
+
+  printf("[tomo window sum] avg=%e\n",
+         sum_check / ppt->tau_size);
+
+  return _SUCCESS_;
+}
+
+/**
+ * In the delta-time approximation we collapse each tomographic channel
+ * onto the nearest sampled perturbation-source time around the chosen
+ * tomography center.
+ */
+#define _TOMO_DELTA_PEAK_HALF_WIDTH_ 1
+#define _TOMO_SMOOTH_PEAK_HALF_WIDTH_ 4
+#define _TOMO_LOCAL_MAX_WIDTH_ (2*_TOMO_SMOOTH_PEAK_HALF_WIDTH_+1)
+
+/**
+ * Find the nearest perturbation-source sampling index to a requested
+ * conformal time.
+ */
+static int transfer_find_nearest_source_tau_index(
+                                                  struct perturbations * ppt,
+                                                  double tau_peak,
+                                                  int * index_tau_peak
+                                                  ) {
+
+  int index_tau;
+  double best_distance;
+  double distance;
+
+  class_test((tau_peak < ppt->tau_sampling[0]) ||
+             (tau_peak > ppt->tau_sampling[ppt->tau_size-1]),
+             ppt->error_message,
+             "Cannot localize transfer source at tau=%e outside sampled range [%e,%e].",
+             tau_peak,
+             ppt->tau_sampling[0],
+             ppt->tau_sampling[ppt->tau_size-1]);
+
+  *index_tau_peak = 0;
+  best_distance = fabs(ppt->tau_sampling[0] - tau_peak);
+
+  for (index_tau = 1; index_tau < ppt->tau_size; index_tau++) {
+    distance = fabs(ppt->tau_sampling[index_tau] - tau_peak);
+    if (distance < best_distance) {
+      best_distance = distance;
+      *index_tau_peak = index_tau;
+    }
+  }
+
+  return _SUCCESS_;
+}
+
+/**
+ * Store a narrow delta-approximation tomographic source around a single
+ * tomography center. We enforce the delta-time approximation here by
+ * keeping only the nearest sampled source bin (or a tiny symmetric
+ * window if _TOMO_DELTA_PEAK_HALF_WIDTH_ is increased in the future).
  */
 static int transfer_store_localized_peak_source(
                                                 struct perturbations * ppt,
@@ -217,74 +613,385 @@ static int transfer_store_localized_peak_source(
                                                 double * sources,
                                                 double * tau0_minus_tau,
                                                 double * w_trapz,
-                                                int * tau_size_out
+                                                int * tau_size_out,
+                                                int * index_tau_peak_out,
+                                                int * width_bins_out
                                                 ) {
 
-  int index_tau_right;
   int index_tau_peak;
-  double source_at_peak;
-  double local_tau_weight;
+  int index_tau_start;
+  int index_tau_stop;
+  int index_tau;
+  int index_store;
+  double weight_sum;
 
-  class_test((tau_peak < ppt->tau_sampling[0]) ||
-             (tau_peak > ppt->tau_sampling[ppt->tau_size-1]),
-             ptr->error_message,
-             "Cannot localize transfer source at tau=%e outside sampled range [%e,%e].",
-             tau_peak,
-             ppt->tau_sampling[0],
-             ppt->tau_sampling[ppt->tau_size-1]);
-
-  class_call(array_interpolate_two(ppt->tau_sampling,
-                                   1,
-                                   0,
-                                   interpolated_sources,
-                                   1,
-                                   ppt->tau_size,
-                                   tau_peak,
-                                   &source_at_peak,
-                                   1,
-                                   ptr->error_message),
+  class_call(transfer_find_nearest_source_tau_index(ppt,
+                                                    tau_peak,
+                                                    &index_tau_peak),
              ptr->error_message,
              ptr->error_message);
 
-  index_tau_right = 0;
-  while ((index_tau_right < ppt->tau_size) &&
-         (ppt->tau_sampling[index_tau_right] < tau_peak)) {
-    index_tau_right++;
+  index_tau_start = MAX(0, index_tau_peak - _TOMO_DELTA_PEAK_HALF_WIDTH_);
+  index_tau_stop = MIN(ppt->tau_size - 1, index_tau_peak + _TOMO_DELTA_PEAK_HALF_WIDTH_);
+  *tau_size_out = index_tau_stop - index_tau_start + 1;
+  *index_tau_peak_out = index_tau_peak;
+  *width_bins_out = *tau_size_out;
+
+  weight_sum = 0.0;
+  for (index_tau = index_tau_start; index_tau <= index_tau_stop; index_tau++) {
+    weight_sum += 1.0;
   }
 
-  if (index_tau_right == 0) {
-    index_tau_peak = 0;
+  index_store = 0;
+  for (index_tau = index_tau_start; index_tau <= index_tau_stop; index_tau++) {
+    sources[index_store] = interpolated_sources[index_tau];
+    tau0_minus_tau[index_store] = tau0 - ppt->tau_sampling[index_tau];
+    w_trapz[index_store] = 1.0 / weight_sum;
+    index_store++;
   }
-  else if (index_tau_right >= ppt->tau_size) {
-    index_tau_peak = ppt->tau_size - 1;
+
+  return _SUCCESS_;
+}
+
+/**
+ * Store a broader, smooth localized source around a tomography center.
+ * This keeps the channel localized in conformal time, but replaces the
+ * hard delta-like few-bin pick by a normalized cosine-taper window.
+ */
+static int transfer_store_smoothed_localized_source(
+                                                    struct perturbations * ppt,
+                                                    struct transfer * ptr,
+                                                    double * interpolated_sources,
+                                                    double tau_peak,
+                                                    double tau0,
+                                                    double * sources,
+                                                    double * tau0_minus_tau,
+                                                    double * w_trapz,
+                                                    int * tau_size_out,
+                                                    int * index_tau_peak_out,
+                                                    int * width_bins_out
+                                                    ) {
+
+  int index_tau_peak;
+  int index_tau_start;
+  int index_tau_stop;
+  int index_tau;
+  int index_store;
+  double delta_tau_max;
+  double delta_tau;
+  double smooth_weight;
+  double smooth_norm;
+
+  class_call(transfer_find_nearest_source_tau_index(ppt,
+                                                    tau_peak,
+                                                    &index_tau_peak),
+             ptr->error_message,
+             ptr->error_message);
+
+  index_tau_start = MAX(0, index_tau_peak - _TOMO_SMOOTH_PEAK_HALF_WIDTH_);
+  index_tau_stop = MIN(ppt->tau_size - 1, index_tau_peak + _TOMO_SMOOTH_PEAK_HALF_WIDTH_);
+  *tau_size_out = index_tau_stop - index_tau_start + 1;
+  *index_tau_peak_out = index_tau_peak;
+  *width_bins_out = *tau_size_out;
+
+  index_store = 0;
+  for (index_tau = index_tau_start; index_tau <= index_tau_stop; index_tau++) {
+    tau0_minus_tau[index_store] = tau0 - ppt->tau_sampling[index_tau];
+    index_store++;
   }
-  else if (fabs(tau_peak - ppt->tau_sampling[index_tau_right-1]) <=
-           fabs(ppt->tau_sampling[index_tau_right] - tau_peak)) {
-    index_tau_peak = index_tau_right - 1;
+
+  class_call(array_trapezoidal_mweights(tau0_minus_tau,
+                                        *tau_size_out,
+                                        w_trapz,
+                                        ptr->error_message),
+             ptr->error_message,
+             ptr->error_message);
+
+  delta_tau_max = MAX(fabs(ppt->tau_sampling[index_tau_start] - tau_peak),
+                      fabs(ppt->tau_sampling[index_tau_stop] - tau_peak));
+
+  if (delta_tau_max <= 0.0) {
+    sources[0] = interpolated_sources[index_tau_peak];
+    w_trapz[0] = 1.0;
+    return _SUCCESS_;
   }
-  else {
-    index_tau_peak = index_tau_right;
+
+  smooth_norm = 0.0;
+  index_store = 0;
+  for (index_tau = index_tau_start; index_tau <= index_tau_stop; index_tau++) {
+    delta_tau = ppt->tau_sampling[index_tau] - tau_peak;
+    smooth_weight = 0.5 * (1.0 + cos(_PI_ * delta_tau / delta_tau_max));
+    sources[index_store] = interpolated_sources[index_tau] * smooth_weight;
+    smooth_norm += w_trapz[index_store] * smooth_weight;
+    index_store++;
+  }
+
+  if (smooth_norm > 0.0) {
+    for (index_store = 0; index_store < *tau_size_out; index_store++) {
+      sources[index_store] /= smooth_norm;
+    }
+  }
+
+  return _SUCCESS_;
+}
+
+/**
+ * Legacy strict two-delta helper kept only to avoid touching unrelated
+ * code paths while the active alpha tomography uses the visibility
+ * split implemented below.
+ */
+static int transfer_store_two_peak_sources(
+                                           struct perturbations * ppt,
+                                           struct transfer * ptr,
+                                           double * interpolated_sources,
+                                           double tau_peak_reco,
+                                           double tau_peak_reio,
+                                           short has_peak_reio,
+                                           double tau0,
+                                           double * sources,
+                                           double * tau0_minus_tau,
+                                           double * w_trapz,
+                                           int * tau_size_out,
+                                           int * index_tau_peak_reco_out,
+                                           int * index_tau_peak_reio_out,
+                                           int * width_bins_reco_out,
+                                           int * width_bins_reio_out
+                                           ) {
+
+  int tau_size_reco;
+  int tau_size_reio;
+  int index_tau_peak_reco;
+  int index_tau_peak_reio;
+  int width_bins_reco;
+  int width_bins_reio;
+  int index_tau;
+
+  class_call(transfer_store_localized_peak_source(ppt,
+                                                  ptr,
+                                                  interpolated_sources,
+                                                  tau_peak_reco,
+                                                  tau0,
+                                                  sources,
+                                                  tau0_minus_tau,
+                                                  w_trapz,
+                                                  &tau_size_reco,
+                                                  &index_tau_peak_reco,
+                                                  &width_bins_reco),
+             ptr->error_message,
+             ptr->error_message);
+
+  *tau_size_out = tau_size_reco;
+  *index_tau_peak_reco_out = index_tau_peak_reco;
+  *width_bins_reco_out = width_bins_reco;
+  *index_tau_peak_reio_out = -1;
+  *width_bins_reio_out = 0;
+
+  if (has_peak_reio == _TRUE_) {
+    class_call(transfer_store_localized_peak_source(ppt,
+                                                    ptr,
+                                                    interpolated_sources,
+                                                    tau_peak_reio,
+                                                    tau0,
+                                                    sources + tau_size_reco,
+                                                    tau0_minus_tau + tau_size_reco,
+                                                    w_trapz + tau_size_reco,
+                                                    &tau_size_reio,
+                                                    &index_tau_peak_reio,
+                                                    &width_bins_reio),
+               ptr->error_message,
+               ptr->error_message);
+
+    for (index_tau = 0; index_tau < tau_size_reco; index_tau++) {
+      w_trapz[index_tau] *= 0.5;
+    }
+    for (index_tau = 0; index_tau < tau_size_reio; index_tau++) {
+      w_trapz[tau_size_reco + index_tau] *= 0.5;
+    }
+
+    *tau_size_out = tau_size_reco + tau_size_reio;
+    *index_tau_peak_reio_out = index_tau_peak_reio;
+    *width_bins_reio_out = width_bins_reio;
+  }
+
+  return _SUCCESS_;
+}
+
+/**
+ * Keep the full transfer-source time support while assigning each tau
+ * sample to the reco or reio channel through the visibility-based
+ * split. The source itself is left untouched apart from the split
+ * window, so alpha_reco/reio reuse the same full g(tau)*delta_chi
+ * history as alpha_total, but restricted to the reco/reio visibility
+ * domains.
+ */
+static int transfer_store_weighted_split_source(
+                                                struct perturbations * ppt,
+                                                struct transfer * ptr,
+                                                double * interpolated_sources,
+                                                double tau_split,
+                                                double tau_peak_reco,
+                                                double sigma_reco,
+                                                double tau_peak_reio,
+                                                double sigma_reio,
+                                                short has_peak_reio,
+                                                short store_reco,
+                                                double tau0,
+                                                double * sources,
+                                                double * tau0_minus_tau,
+                                                double * w_trapz,
+                                                int * tau_size_out
+                                                ){
+
+  int index_tau;
+  double tau;
+  double reco_weight;
+  double split_weight;
+
+  (void)sigma_reco;
+  (void)sigma_reio;
+
+  *tau_size_out = ppt->tau_size;
+
+  for (index_tau = 0; index_tau < ppt->tau_size; index_tau++) {
+    if ((ptr->tomo_reco_window != NULL) &&
+        (ptr->tomo_reio_window != NULL)) {
+      split_weight = (store_reco == _TRUE_)
+        ? ptr->tomo_reco_window[index_tau]
+        : ptr->tomo_reio_window[index_tau];
+    }
+    else {
+      tau = ppt->tau_sampling[index_tau];
+      reco_weight = transfer_tomo_reco_weight(tau,
+                                              tau_split,
+                                              tau_peak_reco,
+                                              tau_peak_reio,
+                                              has_peak_reio);
+
+      split_weight = (store_reco == _TRUE_) ? reco_weight : (1.0 - reco_weight);
+    }
+
+    sources[index_tau] = interpolated_sources[index_tau] * split_weight;
+    tau0_minus_tau[index_tau] = tau0 - ppt->tau_sampling[index_tau];
+  }
+
+  class_call(array_trapezoidal_mweights(tau0_minus_tau,
+                                        *tau_size_out,
+                                        w_trapz,
+                                        ptr->error_message),
+             ptr->error_message,
+             ptr->error_message);
+
+  return _SUCCESS_;
+}
+
+/**
+ * Keep the original full line-of-sight support of a source without any
+ * tomographic localization or split. We use this for the total alpha
+ * channel so that the full birefringence pipeline remains unchanged.
+ */
+static int transfer_store_full_source(
+                                      struct perturbations * ppt,
+                                      struct transfer * ptr,
+                                      double * interpolated_sources,
+                                      double tau0,
+                                      double * sources,
+                                      double * tau0_minus_tau,
+                                      double * w_trapz,
+                                      int * tau_size_out
+                                      ) {
+
+  int index_tau;
+
+  *tau_size_out = ppt->tau_size;
+
+  for (index_tau = 0; index_tau < ppt->tau_size; index_tau++) {
+    sources[index_tau] = interpolated_sources[index_tau];
+    tau0_minus_tau[index_tau] = tau0 - ppt->tau_sampling[index_tau];
+  }
+
+  class_call(array_trapezoidal_mweights(tau0_minus_tau,
+                                        *tau_size_out,
+                                        w_trapz,
+                                        ptr->error_message),
+             ptr->error_message,
+             ptr->error_message);
+
+  return _SUCCESS_;
+}
+
+/**
+ * Store an identically vanishing source. This is used for tomographic
+ * channels that should not inherit broad late-time integrated pieces
+ * without a matching visibility-supported alpha partner.
+ */
+static int transfer_store_zero_source(
+                                      struct background * pba,
+                                      double * sources,
+                                      double * tau0_minus_tau,
+                                      double * w_trapz,
+                                      int * tau_size_out
+                                      ) {
+
+  *tau_size_out = 1;
+  sources[0] = 0.0;
+  tau0_minus_tau[0] = 0.0;
+  w_trapz[0] = 1.0;
+
+  (void)pba;
+
+  return _SUCCESS_;
+}
+
+/**
+ * Helper used only for tomography diagnostics. It evaluates the source-level
+ * line-of-sight integral with the same weights that enter the transfer
+ * integration.
+ */
+static double transfer_integrated_source(
+                                         double * sources,
+                                         double * w_trapz,
+                                         int tau_size
+                                         ) {
+
+  int index_tau;
+  double integral = 0.0;
+
+  for (index_tau = 0; index_tau < tau_size; index_tau++) {
+    integral += w_trapz[index_tau] * sources[index_tau];
+  }
+
+  return integral;
+}
+
+/**
+ * Same diagnostic integral as above, but applied directly to the original
+ * unsplit source sampled on the perturbation time grid.
+ */
+static double transfer_integrated_full_history_source(
+                                                      struct perturbations * ppt,
+                                                      double * interpolated_sources
+                                                      ) {
+
+  int index_tau;
+  double integral = 0.0;
+
+  if (ppt->tau_size <= 0) {
+    return 0.0;
   }
 
   if (ppt->tau_size == 1) {
-    local_tau_weight = 1.0;
-  }
-  else if (index_tau_peak == 0) {
-    local_tau_weight = 0.5 * (ppt->tau_sampling[1] - ppt->tau_sampling[0]);
-  }
-  else if (index_tau_peak == ppt->tau_size - 1) {
-    local_tau_weight = 0.5 * (ppt->tau_sampling[ppt->tau_size-1] - ppt->tau_sampling[ppt->tau_size-2]);
-  }
-  else {
-    local_tau_weight = 0.5 * (ppt->tau_sampling[index_tau_peak+1] - ppt->tau_sampling[index_tau_peak-1]);
+    return interpolated_sources[0];
   }
 
-  sources[0] = source_at_peak * local_tau_weight;
-  tau0_minus_tau[0] = tau0 - tau_peak;
-  w_trapz[0] = 1.0;
-  *tau_size_out = 1;
+  for (index_tau = 0; index_tau < ppt->tau_size - 1; index_tau++) {
+    double delta_tau;
 
-  return _SUCCESS_;
+    delta_tau = fabs(ppt->tau_sampling[index_tau+1] - ppt->tau_sampling[index_tau]);
+    integral += 0.5 * delta_tau
+      * (interpolated_sources[index_tau] + interpolated_sources[index_tau+1]);
+  }
+
+  return integral;
 }
 
 /**
@@ -392,6 +1099,14 @@ int transfer_init(
   double tau_rec;
   /* visibility-valley split time between recombination and reionization */
   double tau_tomo_split;
+  int index_th_peak_reco;
+  int index_th_peak_reio;
+  int index_tau_peak_reco;
+  int index_tau_peak_reio;
+  double z_tomo_peak_reco;
+  double z_tomo_peak_reio;
+  double g_tomo_peak_reco;
+  double g_tomo_peak_reio;
   /* order of magnitude of the oscillation period of transfer functions */
   double q_period;
 
@@ -423,6 +1138,9 @@ int transfer_init(
   HyperInterpStruct BIS;
   double xmax;
 
+
+  ptr->tomo_reco_window = NULL;
+  ptr->tomo_reio_window = NULL;
 
   /** - check whether any spectrum in harmonic space (i.e., any \f$C_l\f$'s) is actually requested */
 
@@ -465,13 +1183,77 @@ int transfer_init(
              pth->error_message,
              ptr->error_message);
 
-  ptr->tau_tomo_peak_reio = pth->conf_time_reio;
-  ptr->has_tomo_peak_reio = _FALSE_;
-
-  class_call(transfer_visibility_reio_peak_tau(pth,
-                                               &(ptr->tau_tomo_peak_reio),
-                                               &(ptr->has_tomo_peak_reio)),
+  class_call(transfer_visibility_peaks(pth,
+                                       &index_th_peak_reco,
+                                       &index_th_peak_reio,
+                                       &z_tomo_peak_reco,
+                                       &z_tomo_peak_reio,
+                                       &ptr->tau_tomo_peak_reco,
+                                       &ptr->tau_tomo_peak_reio,
+                                       &g_tomo_peak_reco,
+                                       &g_tomo_peak_reio,
+                                       &ptr->has_tomo_peak_reio),
              pth->error_message,
+             ptr->error_message);
+
+  ptr->tau_tomo_sigma_reco = 0.0;
+  ptr->tau_tomo_sigma_reio = 0.0;
+
+  class_call(transfer_find_nearest_source_tau_index(ppt,
+                                                    ptr->tau_tomo_peak_reco,
+                                                    &index_tau_peak_reco),
+             ptr->error_message,
+             ptr->error_message);
+
+  if (ptr->has_tomo_peak_reio == _TRUE_) {
+    class_call(transfer_find_nearest_source_tau_index(ppt,
+                                                      ptr->tau_tomo_peak_reio,
+                                                      &index_tau_peak_reio),
+               ptr->error_message,
+               ptr->error_message);
+  }
+  else {
+    index_tau_peak_reio = -1;
+  }
+
+  if (ptr->transfer_verbose > 0) {
+    if (ptr->has_tomo_peak_reio == _TRUE_) {
+      fprintf(stdout,
+              "[tomo visibility split] reco_peak: th_index=%d source_index=%d z=%g tau=%g g=%e | reio_peak: th_index=%d source_index=%d z=%g tau=%g g=%e | split_tau=%g\n",
+              index_th_peak_reco,
+              index_tau_peak_reco,
+              z_tomo_peak_reco,
+              ptr->tau_tomo_peak_reco,
+              g_tomo_peak_reco,
+              index_th_peak_reio,
+              index_tau_peak_reio,
+              z_tomo_peak_reio,
+              ptr->tau_tomo_peak_reio,
+              g_tomo_peak_reio,
+              tau_tomo_split);
+    }
+    else {
+      fprintf(stdout,
+              "[tomo visibility split] reco_peak: th_index=%d source_index=%d z=%g tau=%g g=%e | reio_peak: none found | split_tau=%g\n",
+              index_th_peak_reco,
+              index_tau_peak_reco,
+              z_tomo_peak_reco,
+              ptr->tau_tomo_peak_reco,
+              g_tomo_peak_reco,
+              tau_tomo_split);
+    }
+    fflush(stdout);
+  }
+
+  class_call(transfer_precompute_tomo_windows(ppt,
+                                              pth,
+                                              ptr,
+                                              tau_tomo_split,
+                                              ptr->tau_tomo_peak_reco,
+                                              ptr->tau_tomo_peak_reio,
+                                              g_tomo_peak_reio,
+                                              ptr->has_tomo_peak_reio),
+             ptr->error_message,
              ptr->error_message);
 
   /** - correspondence between k and l depend on angular diameter
@@ -735,6 +1517,16 @@ int transfer_free(
       free(ptr->nz_evo_dlog_nz);
       free(ptr->nz_evo_dd_dlog_nz);
     }
+  }
+
+  if (ptr->tomo_reco_window != NULL) {
+    free(ptr->tomo_reco_window);
+    ptr->tomo_reco_window = NULL;
+  }
+
+  if (ptr->tomo_reio_window != NULL) {
+    free(ptr->tomo_reio_window);
+    ptr->tomo_reio_window = NULL;
   }
 
   ptr->is_allocated = _FALSE_;
@@ -2064,14 +2856,11 @@ int transfer_source_tau_size(
       *tau_size = ppt->tau_size;
 
     
-    if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha))
+    if ((ppt->has_source_alpha == _TRUE_) &&
+        ((index_tt == ptr->index_tt_alpha) ||
+         (index_tt == ptr->index_tt_alpha_reco) ||
+         (index_tt == ptr->index_tt_alpha_reio)))
       *tau_size = ppt->tau_size;
-
-    if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reco))
-      *tau_size = 1;
-
-    if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reio))
-      *tau_size = 1;
 
     /* cmb lensing potential */
     if ((ppt->has_cl_cmb_lensing_potential == _TRUE_) && (index_tt == ptr->index_tt_lcmb)) {
@@ -2392,48 +3181,48 @@ int transfer_compute_for_each_q(
                                                        &radial_type),
                        ptr->error_message,
                        ptr->error_message);
-          if (_scalars_ && index_ic == 0 && index_q == 121) {
-            if (index_tt == ptr->index_tt_t0 ||
-                index_tt == ptr->index_tt_t0_reco ||
-                index_tt == ptr->index_tt_t0_reio ||
-                index_tt == ptr->index_tt_t1 ||
-                index_tt == ptr->index_tt_t1_reco ||
-                index_tt == ptr->index_tt_t1_reio ||
-                index_tt == ptr->index_tt_t2 ||
-                index_tt == ptr->index_tt_t2_reco ||
-                index_tt == ptr->index_tt_t2_reio ||
-                index_tt == ptr->index_tt_e ||
-                index_tt == ptr->index_tt_e_reco ||
-                index_tt == ptr->index_tt_e_reio ||
-                index_tt == ptr->index_tt_alpha ||
-                index_tt == ptr->index_tt_alpha_reco ||
-                index_tt == ptr->index_tt_alpha_reio) {
-
-              double s0 = 0.0;
-              if (*tau_size > 0) s0 = sources[0];
-
-              printf("DEBUG SRC q=%d k=%e index_tt=%d tau_size=%d first_source=%e\\n",
-                    index_q, k, index_tt, *tau_size, s0);
-            }
-          }
 
             for (index_l = 0; index_l < ptr->l_size[index_md]; index_l++) {
 
               l = (double)ptr->l[index_l];
+              {
+                double ra_for_neglect;
 
-              /* neglect transfer function when l is much smaller than k*tau0 */
-              class_call(transfer_can_be_neglected(ppr,
-                                                   ppt,
-                                                   ptr,
-                                                   index_md,
-                                                   index_ic,
-                                                   index_tt,
-                                                   (pba->conformal_age-tau_rec)*ptr->angular_rescaling,
-                                                   ptr->q[index_q],
-                                                   l,
-                                                   &neglect),
-                         ptr->error_message,
-                         ptr->error_message);
+                ra_for_neglect = (pba->conformal_age-tau_rec)*ptr->angular_rescaling;
+
+                if ((index_tt == ptr->index_tt_t0_reco) ||
+                    (index_tt == ptr->index_tt_t1_reco) ||
+                    (index_tt == ptr->index_tt_t2_reco) ||
+                    (index_tt == ptr->index_tt_e_reco) ||
+                    (index_tt == ptr->index_tt_alpha_reco)) {
+                  ra_for_neglect = (pba->conformal_age-ptr->tau_tomo_peak_reco)*ptr->angular_rescaling;
+                }
+
+                if ((index_tt == ptr->index_tt_t0_reio) ||
+                    (index_tt == ptr->index_tt_t1_reio) ||
+                    (index_tt == ptr->index_tt_t2_reio) ||
+                    (index_tt == ptr->index_tt_e_reio) ||
+                    (index_tt == ptr->index_tt_alpha_reio)) {
+                  ra_for_neglect = (pba->conformal_age-ptr->tau_tomo_peak_reio)*ptr->angular_rescaling;
+                }
+
+                /* For tomographic reco/reio channels, use the corresponding
+                   emission distance in the low-l neglect criterion. Using the
+                   recombination distance for reionization suppresses the large-scale
+                   reionization bump too aggressively. */
+                class_call(transfer_can_be_neglected(ppr,
+                                                     ppt,
+                                                     ptr,
+                                                     index_md,
+                                                     index_ic,
+                                                     index_tt,
+                                                     ra_for_neglect,
+                                                     ptr->q[index_q],
+                                                     l,
+                                                     &neglect),
+                           ptr->error_message,
+                           ptr->error_message);
+              }
 
               /* for K>0 (closed), transfer functions only defined for l<nu */
               if ((ptw->sgnK == 1) && (ptr->l[index_l] >= (int)(q/sqrt(ptw->K)+0.2))) {
@@ -2751,13 +3540,13 @@ int transfer_sources(
   /* transfer-level tomography flags */
   short is_tomo_temp = _FALSE_;
   short is_tomo_pol = _FALSE_;
+  short is_tomo_alpha_total = _FALSE_;
   short is_tomo_alpha = _FALSE_;
   short is_reco_channel = _FALSE_;
   short is_reio_channel = _FALSE_;
   short is_lcmb = _FALSE_;
   short is_nonintegrated_nc = _FALSE_;
   short is_integrated_nc = _FALSE_;
-  double reco_part = 0.0;
 
   /** - in which cases are perturbation and transfer sources are different?
       I.e., in which case do we need to multiply the sources by some
@@ -2779,6 +3568,9 @@ int transfer_sources(
     is_tomo_pol = ((ppt->has_cl_cmb_polarization == _TRUE_) &&
                    ((index_tt == ptr->index_tt_e_reco) ||
                     (index_tt == ptr->index_tt_e_reio)));
+
+    is_tomo_alpha_total = ((ppt->has_source_alpha == _TRUE_) &&
+                           (index_tt == ptr->index_tt_alpha));
 
     is_tomo_alpha = ((ppt->has_source_alpha == _TRUE_) &&
                      ((index_tt == ptr->index_tt_alpha_reco) ||
@@ -2804,6 +3596,7 @@ int transfer_sources(
 
     if ((is_tomo_temp == _TRUE_) ||
         (is_tomo_pol == _TRUE_) ||
+        (is_tomo_alpha_total == _TRUE_) ||
         (is_tomo_alpha == _TRUE_) ||
         (is_lcmb == _TRUE_) ||
         (is_nonintegrated_nc == _TRUE_) ||
@@ -2838,8 +3631,6 @@ int transfer_sources(
       /* -------------------------------------------------------------- */
       if (is_tomo_temp == _TRUE_) {
 
-        tau_size = ppt->tau_size;
-
         is_reco_channel =
           ((index_tt == ptr->index_tt_t0_reco) ||
            (index_tt == ptr->index_tt_t1_reco) ||
@@ -2850,67 +3641,27 @@ int transfer_sources(
            (index_tt == ptr->index_tt_t1_reio) ||
            (index_tt == ptr->index_tt_t2_reio));
 
-        for (index_tau=0; index_tau < ppt->tau_size; index_tau++) {
-          tau = ppt->tau_sampling[index_tau];
-          reco_part = (tau <= tau_tomo_split) ? interpolated_sources[index_tau] : 0.0;
-
-          if (is_reco_channel == _TRUE_)
-            sources[index_tau] = reco_part;
-          else if (is_reio_channel == _TRUE_)
-            sources[index_tau] = interpolated_sources[index_tau] - reco_part;
-          else
-            sources[index_tau] = interpolated_sources[index_tau];
-
-          tau0_minus_tau[index_tau] = tau0 - tau;
+        if ((index_tt == ptr->index_tt_t1_reco) ||
+            (index_tt == ptr->index_tt_t1_reio)) {
+          class_call(transfer_store_zero_source(pba,
+                                                sources,
+                                                tau0_minus_tau,
+                                                w_trapz,
+                                                &tau_size),
+                     ptr->error_message,
+                     ptr->error_message);
         }
-
-        class_call(array_trapezoidal_mweights(tau0_minus_tau,
-                                              tau_size,
-                                              w_trapz,
-                                              ptr->error_message),
-                   ptr->error_message,
-                   ptr->error_message);
-      }
-
-      else if (is_tomo_pol == _TRUE_) {
-
-        tau_size = ppt->tau_size;
-        is_reco_channel = (index_tt == ptr->index_tt_e_reco);
-        is_reio_channel = (index_tt == ptr->index_tt_e_reio);
-
-        for (index_tau=0; index_tau < ppt->tau_size; index_tau++) {
-          tau = ppt->tau_sampling[index_tau];
-          reco_part = (tau <= tau_tomo_split) ? interpolated_sources[index_tau] : 0.0;
-
-          if (is_reco_channel == _TRUE_)
-            sources[index_tau] = reco_part;
-          else if (is_reio_channel == _TRUE_)
-            sources[index_tau] = interpolated_sources[index_tau] - reco_part;
-          else
-            sources[index_tau] = interpolated_sources[index_tau];
-
-          tau0_minus_tau[index_tau] = tau0 - tau;
-        }
-
-        class_call(array_trapezoidal_mweights(tau0_minus_tau,
-                                              tau_size,
-                                              w_trapz,
-                                              ptr->error_message),
-                   ptr->error_message,
-                   ptr->error_message);
-      }
-
-      else if (is_tomo_alpha == _TRUE_) {
-
-        is_reco_channel = (index_tt == ptr->index_tt_alpha_reco);
-        is_reio_channel = (index_tt == ptr->index_tt_alpha_reio);
-
-        /* Approximate g(eta) by localized emission at the visibility peaks. */
-        if (is_reco_channel == _TRUE_) {
-          class_call(transfer_store_localized_peak_source(ppt,
+        else if (is_reco_channel == _TRUE_) {
+          class_call(transfer_store_weighted_split_source(ppt,
                                                           ptr,
                                                           interpolated_sources,
-                                                          tau_rec,
+                                                          tau_tomo_split,
+                                                          ptr->tau_tomo_peak_reco,
+                                                          ptr->tau_tomo_sigma_reco,
+                                                          ptr->tau_tomo_peak_reio,
+                                                          ptr->tau_tomo_sigma_reio,
+                                                          ptr->has_tomo_peak_reio,
+                                                          _TRUE_,
                                                           tau0,
                                                           sources,
                                                           tau0_minus_tau,
@@ -2920,10 +3671,16 @@ int transfer_sources(
                      ptr->error_message);
         }
         else if ((is_reio_channel == _TRUE_) && (ptr->has_tomo_peak_reio == _TRUE_)) {
-          class_call(transfer_store_localized_peak_source(ppt,
+          class_call(transfer_store_weighted_split_source(ppt,
                                                           ptr,
                                                           interpolated_sources,
+                                                          tau_tomo_split,
+                                                          ptr->tau_tomo_peak_reco,
+                                                          ptr->tau_tomo_sigma_reco,
                                                           ptr->tau_tomo_peak_reio,
+                                                          ptr->tau_tomo_sigma_reio,
+                                                          ptr->has_tomo_peak_reio,
+                                                          _FALSE_,
                                                           tau0,
                                                           sources,
                                                           tau0_minus_tau,
@@ -2935,7 +3692,122 @@ int transfer_sources(
         else {
           tau_size = 1;
           sources[0] = 0.0;
-          tau0_minus_tau[0] = tau0 - tau_rec;
+          tau0_minus_tau[0] = tau0 - ptr->tau_tomo_peak_reio;
+          w_trapz[0] = 1.0;
+        }
+      }
+
+      else if (is_tomo_pol == _TRUE_) {
+
+        is_reco_channel = (index_tt == ptr->index_tt_e_reco);
+        is_reio_channel = (index_tt == ptr->index_tt_e_reio);
+
+        if (is_reco_channel == _TRUE_) {
+          class_call(transfer_store_weighted_split_source(ppt,
+                                                          ptr,
+                                                          interpolated_sources,
+                                                          tau_tomo_split,
+                                                          ptr->tau_tomo_peak_reco,
+                                                          ptr->tau_tomo_sigma_reco,
+                                                          ptr->tau_tomo_peak_reio,
+                                                          ptr->tau_tomo_sigma_reio,
+                                                          ptr->has_tomo_peak_reio,
+                                                          _TRUE_,
+                                                          tau0,
+                                                          sources,
+                                                          tau0_minus_tau,
+                                                          w_trapz,
+                                                          &tau_size),
+                     ptr->error_message,
+                     ptr->error_message);
+        }
+        else if ((is_reio_channel == _TRUE_) && (ptr->has_tomo_peak_reio == _TRUE_)) {
+          class_call(transfer_store_weighted_split_source(ppt,
+                                                          ptr,
+                                                          interpolated_sources,
+                                                          tau_tomo_split,
+                                                          ptr->tau_tomo_peak_reco,
+                                                          ptr->tau_tomo_sigma_reco,
+                                                          ptr->tau_tomo_peak_reio,
+                                                          ptr->tau_tomo_sigma_reio,
+                                                          ptr->has_tomo_peak_reio,
+                                                          _FALSE_,
+                                                          tau0,
+                                                          sources,
+                                                          tau0_minus_tau,
+                                                          w_trapz,
+                                                          &tau_size),
+                     ptr->error_message,
+                     ptr->error_message);
+        }
+        else {
+          tau_size = 1;
+          sources[0] = 0.0;
+          tau0_minus_tau[0] = tau0 - ptr->tau_tomo_peak_reio;
+          w_trapz[0] = 1.0;
+        }
+      }
+
+      else if ((is_tomo_alpha_total == _TRUE_) ||
+               (is_tomo_alpha == _TRUE_)) {
+
+        is_reco_channel = (index_tt == ptr->index_tt_alpha_reco);
+        is_reio_channel = (index_tt == ptr->index_tt_alpha_reio);
+
+        if (is_tomo_alpha_total == _TRUE_) {
+          class_call(transfer_store_full_source(ppt,
+                                                ptr,
+                                                interpolated_sources,
+                                                tau0,
+                                                sources,
+                                                tau0_minus_tau,
+                                                w_trapz,
+                                                &tau_size),
+                     ptr->error_message,
+                     ptr->error_message);
+        }
+        else if (is_reco_channel == _TRUE_) {
+          class_call(transfer_store_weighted_split_source(ppt,
+                                                          ptr,
+                                                          interpolated_sources,
+                                                          tau_tomo_split,
+                                                          ptr->tau_tomo_peak_reco,
+                                                          ptr->tau_tomo_sigma_reco,
+                                                          ptr->tau_tomo_peak_reio,
+                                                          ptr->tau_tomo_sigma_reio,
+                                                          ptr->has_tomo_peak_reio,
+                                                          _TRUE_,
+                                                          tau0,
+                                                          sources,
+                                                          tau0_minus_tau,
+                                                          w_trapz,
+                                                          &tau_size),
+                     ptr->error_message,
+                     ptr->error_message);
+        }
+        else if ((is_reio_channel == _TRUE_) && (ptr->has_tomo_peak_reio == _TRUE_)) {
+          class_call(transfer_store_weighted_split_source(ppt,
+                                                          ptr,
+                                                          interpolated_sources,
+                                                          tau_tomo_split,
+                                                          ptr->tau_tomo_peak_reco,
+                                                          ptr->tau_tomo_sigma_reco,
+                                                          ptr->tau_tomo_peak_reio,
+                                                          ptr->tau_tomo_sigma_reio,
+                                                          ptr->has_tomo_peak_reio,
+                                                          _FALSE_,
+                                                          tau0,
+                                                          sources,
+                                                          tau0_minus_tau,
+                                                          w_trapz,
+                                                          &tau_size),
+                     ptr->error_message,
+                     ptr->error_message);
+        }
+        else {
+          tau_size = 1;
+          sources[0] = 0.0;
+          tau0_minus_tau[0] = tau0 - ptr->tau_tomo_peak_reio;
           w_trapz[0] = 1.0;
         }
       }
@@ -3853,7 +4725,8 @@ int transfer_use_limber(
 
   if (_scalars_ &&
       (ppt->has_source_alpha == _TRUE_) &&
-      ((index_tt == ptr->index_tt_alpha_reco) ||
+      ((index_tt == ptr->index_tt_alpha) ||
+       (index_tt == ptr->index_tt_alpha_reco) ||
        (index_tt == ptr->index_tt_alpha_reio))) {
     return _SUCCESS_;
   }

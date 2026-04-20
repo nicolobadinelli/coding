@@ -3060,6 +3060,11 @@ double ddV_scf(
 
 double V_chi(struct background *pba, double chi) {
   double m = pba->m_chi;
+  /*
+   * Paper model (Eq. 12 of arXiv:2211.06380):
+   *   V = m_chi^2 M_Pl^2 [1 - cos(chi / M_Pl)]^2
+   * Here chi is stored in reduced-Planck units, hence chi/M_Pl = chi/sqrt(8 pi).
+   */
   const double s = sqrt(8.0*_PI_);
   double x = chi / s;
   double one_minus_cos = 1.0 - cos(x);
@@ -3070,7 +3075,7 @@ double dV_chi(struct background *pba, double chi) {
   double m = pba->m_chi;
   const double s = sqrt(8.0*_PI_);
   double x = chi / s;
-  return  (2.0*s) * m*m * (1.0 - cos(x)) * sin(x);
+  return (2.0*s) * m*m * (1.0 - cos(x)) * sin(x);
 }
 
 double ddV_chi(struct background *pba, double chi) {
@@ -3079,5 +3084,5 @@ double ddV_chi(struct background *pba, double chi) {
   double x = chi / s;
   double sinx = sin(x);
   double cosx = cos(x);
-  return (2.0) * m*m * (sinx*sinx + (1.0 - cosx)*cosx);
+  return 2.0 * m*m * (sinx*sinx + (1.0 - cosx)*cosx);
 }

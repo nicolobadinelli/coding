@@ -5504,7 +5504,9 @@ int perturbations_initial_conditions(struct precision * ppr,
         /*  a*a/k/k/ppw->pvecback[pba->index_bg_phi_prime_scf]*k*ktau_three/4.*1./(4.-6.*(1./3.)+3.*1.) * (ppw->pvecback[pba->index_bg_rho_scf] + ppw->pvecback[pba->index_bg_p_scf])* ppr->curvature_ini * s2_squared; */
       }
       if (pba->has_chi == _TRUE_) {
-        /* chi field perturbations */
+        /* Paper-matching adiabatic spectator ICs:
+           the background normalization is set by chi_ini/chi_prime_ini,
+           while the perturbations start from delta_chi = delta_chi' = 0. */
         ppw->pv->y[ppw->pv->index_pt_delta_chi]  = 0.;
         ppw->pv->y[ppw->pv->index_pt_deltap_chi] = 0.;
       }
@@ -7921,11 +7923,17 @@ int perturbations_sources(
     if (ppt->has_source_alpha == _TRUE_) {
 
       /*
-       * Full birefringence source only.
+       * Line-of-sight birefringence source.
        * IMPORTANT: y[index_pt_delta_chi] is gauge-dependent.
        * - In synchronous gauge, convert to a gauge-invariant/Newtonian-like field fluctuation:
        *     delta_chi_N = delta_chi_syn + chi0' * alpha_metric
        * - In Newtonian gauge, y[index_pt_delta_chi] is already the appropriate field fluctuation.
+       *
+       * The transfer source for anisotropic birefringence must carry the
+       * visibility weighting, exactly like the standard CMB last-scattering
+       * sources. The transfer module may later localize this full source in
+       * tau for the reco/reio tomography channels, but the underlying source
+       * itself is proportional to g(tau) * delta_chi.
        */
 
       double delta_chi_for_alpha = 0.0;
@@ -9485,12 +9493,25 @@ if (pba->has_chi == _TRUE_) {
   /** - ----> field perturbation value */
   dy[pv->index_pt_delta_chi] = y[pv->index_pt_deltap_chi];
 
-  /** - ----> Klein Gordon equation for delta_chi (synchronous gauge) */
-  dy[pv->index_pt_deltap_chi] =
-    - 2.*a_prime_over_a*y[pv->index_pt_deltap_chi]
-    - metric_continuity*pvecback[pba->index_bg_chi0_prime]
-    - (k2 + a2*ddV_chi(pba, pvecback[pba->index_bg_chi0]))
-      * y[pv->index_pt_delta_chi];
+  if (ppt->gauge == synchronous) {
+
+    /* In synchronous gauge, metric_continuity = h'/2. */
+    dy[pv->index_pt_deltap_chi] =
+      - 2.*a_prime_over_a*y[pv->index_pt_deltap_chi]
+      - metric_continuity*pvecback[pba->index_bg_chi0_prime]
+      - (k2 + a2*ddV_chi(pba, pvecback[pba->index_bg_chi0]))
+        * y[pv->index_pt_delta_chi];
+  }
+  else {
+
+    /* In Newtonian gauge, the Klein-Gordon source contains both phi' and psi terms. */
+    dy[pv->index_pt_deltap_chi] =
+      - 2.*a_prime_over_a*y[pv->index_pt_deltap_chi]
+      + 4.*pvecmetric[ppw->index_mt_phi_prime]*pvecback[pba->index_bg_chi0_prime]
+      - (k2 + a2*ddV_chi(pba, pvecback[pba->index_bg_chi0]))
+        * y[pv->index_pt_delta_chi]
+      - 2.*a2*pvecback[pba->index_bg_dV_chi]*pvecmetric[ppw->index_mt_psi];
+  }
 }
     /** - ---> ultra-relativistic neutrino/relics (ur) */
 
