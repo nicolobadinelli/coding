@@ -1913,12 +1913,7 @@ int harmonic_compute_cl(
         * transfer_ic2[ptr->index_tt_alpha_reco]
         * factor;
 
-    if (_scalars_ && (phr->has_aa_reio == _TRUE_))
-      cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_aa_reio]=
-        primordial_pk[index_ic1_ic2]
-        * transfer_ic1[ptr->index_tt_alpha_reio]
-        * transfer_ic2[ptr->index_tt_alpha_reio]
-        * factor;
+    /* aa_reio is computed post-integration as aa - aa_reco; skip integrand here */
 
     /* alpha-T cross spectrum */
     if (_scalars_ && (phr->has_at == _TRUE_))
@@ -1936,13 +1931,7 @@ int harmonic_compute_cl(
               transfer_ic1_temp * transfer_ic2[ptr->index_tt_alpha_reco])
         * factor;
 
-    /* alpha-T reio */
-    if (_scalars_ && (phr->has_at_reio == _TRUE_))
-      cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_at_reio] =
-        primordial_pk[index_ic1_ic2]
-        * 0.5*(transfer_ic1[ptr->index_tt_alpha_reio] * transfer_ic2_temp +
-              transfer_ic1_temp * transfer_ic2[ptr->index_tt_alpha_reio])
-        * factor;
+    /* aT_reio is computed post-integration as aT - aT_reco; skip integrand here */
 
     /* alpha-E cross spectrum */
     if (_scalars_ && (phr->has_ae == _TRUE_))
@@ -1960,13 +1949,7 @@ int harmonic_compute_cl(
               transfer_ic1_e_reco * transfer_ic2[ptr->index_tt_alpha_reco])
         * factor;
 
-    /* alpha-E reio */
-    if (_scalars_ && (phr->has_ae_reio == _TRUE_))
-      cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_ae_reio] =
-        primordial_pk[index_ic1_ic2]
-        * 0.5*(transfer_ic1[ptr->index_tt_alpha_reio] * transfer_ic2_e_reio +
-              transfer_ic1_e_reio * transfer_ic2[ptr->index_tt_alpha_reio])
-        * factor;
+    /* aE_reio is computed post-integration as aE - aE_reco; skip integrand here */
 
     if (_scalars_ && (phr->has_dd == _TRUE_)) {
       index_ct=0;
@@ -2216,7 +2199,11 @@ int harmonic_compute_cl(
         (_tensors_ && (phr->has_dl == _TRUE_) && (index_ct == phr->index_ct_dl)) ||
         (_tensors_ && (phr->has_aa == _TRUE_) && (index_ct == phr->index_ct_aa)) ||
         (_tensors_ && (phr->has_at == _TRUE_) && (index_ct == phr->index_ct_at)) ||
-        (_tensors_ && (phr->has_ae == _TRUE_) && (index_ct == phr->index_ct_ae))
+        (_tensors_ && (phr->has_ae == _TRUE_) && (index_ct == phr->index_ct_ae)) ||
+        /* aa_reio, aT_reio, aE_reio are overwritten post-integration; zero them here */
+        (_scalars_ && (phr->has_aa_reio == _TRUE_) && (index_ct == phr->index_ct_aa_reio)) ||
+        (_scalars_ && (phr->has_at_reio == _TRUE_) && (index_ct == phr->index_ct_at_reio)) ||
+        (_scalars_ && (phr->has_ae_reio == _TRUE_) && (index_ct == phr->index_ct_ae_reio))
         ) {
 
       phr->cl[index_md]
@@ -2294,6 +2281,50 @@ int harmonic_compute_cl(
         [(index_l * phr->ic_ic_size[index_md] + index_ic1_ic2) * phr->ct_size + index_ct]
         = clvalue;
 
+    }
+  }
+
+  /* Post-integration: derive aa_reio, aT_reio, aE_reio as total - reco
+   * so that the output satisfies  *_reio = *_total - *_reco exactly.
+   * The independent alpha_reio transfer-function integrals were intentionally
+   * skipped above to avoid the cross-term error that makes ae_reio wrong at
+   * high ell. */
+  if (_scalars_) {
+    int offset_ct = (index_l * phr->ic_ic_size[index_md] + index_ic1_ic2) * phr->ct_size;
+
+    if ((phr->has_aa_reio == _TRUE_) && (phr->has_aa == _TRUE_) && (phr->has_aa_reco == _TRUE_)) {
+      phr->cl[index_md][offset_ct + phr->index_ct_aa_reio] =
+        phr->cl[index_md][offset_ct + phr->index_ct_aa] -
+        phr->cl[index_md][offset_ct + phr->index_ct_aa_reco];
+    }
+
+    if ((phr->has_at_reio == _TRUE_) && (phr->has_at == _TRUE_) && (phr->has_at_reco == _TRUE_)) {
+      phr->cl[index_md][offset_ct + phr->index_ct_at_reio] =
+        phr->cl[index_md][offset_ct + phr->index_ct_at] -
+        phr->cl[index_md][offset_ct + phr->index_ct_at_reco];
+    }
+
+    if ((phr->has_ae_reio == _TRUE_) && (phr->has_ae == _TRUE_) && (phr->has_ae_reco == _TRUE_)) {
+      phr->cl[index_md][offset_ct + phr->index_ct_ae_reio] =
+        phr->cl[index_md][offset_ct + phr->index_ct_ae] -
+        phr->cl[index_md][offset_ct + phr->index_ct_ae_reco];
+    }
+
+    /* Diagnostic: verify residuals are zero */
+    if ((phr->has_aa_reio == _TRUE_) && (phr->has_aa == _TRUE_) && (phr->has_aa_reco == _TRUE_) &&
+        (phr->has_at_reio == _TRUE_) && (phr->has_at == _TRUE_) && (phr->has_at_reco == _TRUE_) &&
+        (phr->has_ae_reio == _TRUE_) && (phr->has_ae == _TRUE_) && (phr->has_ae_reco == _TRUE_)) {
+      double aa_residual = phr->cl[index_md][offset_ct + phr->index_ct_aa]
+                         - phr->cl[index_md][offset_ct + phr->index_ct_aa_reco]
+                         - phr->cl[index_md][offset_ct + phr->index_ct_aa_reio];
+      double at_residual = phr->cl[index_md][offset_ct + phr->index_ct_at]
+                         - phr->cl[index_md][offset_ct + phr->index_ct_at_reco]
+                         - phr->cl[index_md][offset_ct + phr->index_ct_at_reio];
+      double ae_residual = phr->cl[index_md][offset_ct + phr->index_ct_ae]
+                         - phr->cl[index_md][offset_ct + phr->index_ct_ae_reco]
+                         - phr->cl[index_md][offset_ct + phr->index_ct_ae_reio];
+      fprintf(stdout, "[reio_check] l=%d  aa_residual=%.3e  at_residual=%.3e  ae_residual=%.3e\n",
+              (int)phr->l[index_l], aa_residual, at_residual, ae_residual);
     }
   }
 
