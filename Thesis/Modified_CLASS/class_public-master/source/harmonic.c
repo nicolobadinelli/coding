@@ -1977,6 +1977,33 @@ int harmonic_compute_cl(
   }
 }
 
+    /* ---- TOMO DIAGNOSTICS (G): transfer values for one k and a few ell ---- */
+    /* Activates for a fixed representative k near the first acoustic peak and
+       a handful of ell values. Uses ic1 only (ic2 is identical for adiabatic). */
+    if (_scalars_ && (ppt->has_source_alpha == _TRUE_) && (ppt->has_cl_cmb_polarization == _TRUE_)) {
+      int l_int = (int)l;
+      int is_diag_l = (l_int == 10 || l_int == 50 || l_int == 100 ||
+                       l_int == 200 || l_int == 500 || l_int == 1000);
+      /* pick one q index per run: middle of the k range (diagnostic only, thread-safe) */
+      int diag_q_index = ptr->q_size / 2;
+      if (is_diag_l && (index_q == diag_q_index)) {
+        double alpha_tot  = transfer_ic1[ptr->index_tt_alpha];
+        double alpha_reco = transfer_ic1[ptr->index_tt_alpha_reco];
+        double alpha_reio = transfer_ic1[ptr->index_tt_alpha_reio]; /* complementary window */
+        double e_tot      = transfer_ic1[ptr->index_tt_e];
+        double e_reco     = transfer_ic1[ptr->index_tt_e_reco];
+        double e_reio     = transfer_ic1[ptr->index_tt_e_reio];
+        fprintf(stderr,
+                "[TOMO_DIAG_TF] l=%d k=%e | "
+                "alpha_tot=%e alpha_reco=%e (tot-reco)=%e alpha_reio_win=%e | "
+                "E_tot=%e E_reco=%e (tot-reco)=%e E_reio_win=%e\n",
+                l_int, k,
+                alpha_tot, alpha_reco, alpha_tot - alpha_reco, alpha_reio,
+                e_tot,     e_reco,     e_tot - e_reco,          e_reio);
+      }
+    }
+    /* ---- END TOMO DIAGNOSTICS (transfer level) ---- */
+
     if (ppt->has_cl_number_count == _TRUE_ && _scalars_) {
 
       for (index_d1=0; index_d1<phr->d_size; index_d1++) {
@@ -2493,7 +2520,11 @@ int harmonic_compute_cl(
         (_tensors_ && (phr->has_dl == _TRUE_) && (index_ct == phr->index_ct_dl)) ||
         (_tensors_ && (phr->has_aa == _TRUE_) && (index_ct == phr->index_ct_aa)) ||
         (_tensors_ && (phr->has_at == _TRUE_) && (index_ct == phr->index_ct_at)) ||
-        (_tensors_ && (phr->has_ae == _TRUE_) && (index_ct == phr->index_ct_ae))
+        (_tensors_ && (phr->has_ae == _TRUE_) && (index_ct == phr->index_ct_ae)) ||
+        /* reio alpha spectra are derived post-integration as total - reco */
+        (_scalars_ && (phr->has_aa_reio == _TRUE_) && (index_ct == phr->index_ct_aa_reio)) ||
+        (_scalars_ && (phr->has_at_reio == _TRUE_) && (index_ct == phr->index_ct_at_reio)) ||
+        (_scalars_ && (phr->has_ae_reio == _TRUE_) && (index_ct == phr->index_ct_ae_reio))
         ) {
 
       phr->cl[index_md]
@@ -2589,6 +2620,42 @@ int harmonic_compute_cl(
 
     if (phr->has_te_reio == _TRUE_)
       phr->cl[index_md][cl_offset + phr->index_ct_te_reio] = cl_te_reio;
+
+    /* Professor's prescription: reio = total - reco for all alpha spectra.
+       These were skipped in the integration loop above and are derived here. */
+    if (phr->has_aa_reio == _TRUE_)
+      phr->cl[index_md][cl_offset + phr->index_ct_aa_reio] =
+        phr->cl[index_md][cl_offset + phr->index_ct_aa] -
+        phr->cl[index_md][cl_offset + phr->index_ct_aa_reco];
+
+    if (phr->has_at_reio == _TRUE_)
+      phr->cl[index_md][cl_offset + phr->index_ct_at_reio] =
+        phr->cl[index_md][cl_offset + phr->index_ct_at] -
+        phr->cl[index_md][cl_offset + phr->index_ct_at_reco];
+
+    if (phr->has_ae_reio == _TRUE_)
+      phr->cl[index_md][cl_offset + phr->index_ct_ae_reio] =
+        phr->cl[index_md][cl_offset + phr->index_ct_ae] -
+        phr->cl[index_md][cl_offset + phr->index_ct_ae_reco];
+
+    /* ---- TOMO DIAGNOSTICS (G) ---- */
+    /* Print transfer-level and spectrum-level tomographic values for a set of
+       representative ell and k values to verify the reco/reio split. */
+    if ((ppt->has_source_alpha == _TRUE_) && (ppt->has_cl_cmb_polarization == _TRUE_)) {
+      int l_int = (int)l;
+      int is_diag_l = (l_int == 10 || l_int == 50 || l_int == 100 ||
+                       l_int == 200 || l_int == 500 || l_int == 1000);
+      if (is_diag_l) {
+        double cl_ae_tot  = (phr->has_ae      == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_ae]      : 0.;
+        double cl_ae_reco = (phr->has_ae_reco == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_ae_reco] : 0.;
+        double cl_ae_reio = (phr->has_ae_reio == _TRUE_) ? phr->cl[index_md][cl_offset + phr->index_ct_ae_reio] : 0.;
+        fprintf(stderr,
+                "[TOMO_DIAG_CL] l=%d | CaE_total=%e CaE_reco=%e CaE_reio(=total-reco)=%e check_sum(reco+reio-total)=%e\n",
+                l_int, cl_ae_tot, cl_ae_reco, cl_ae_reio,
+                cl_ae_reco + cl_ae_reio - cl_ae_tot);
+      }
+    }
+    /* ---- END TOMO DIAGNOSTICS ---- */
   }
 
   if (ppt->has_cl_number_count == _TRUE_ && _scalars_) {
