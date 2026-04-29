@@ -4429,6 +4429,15 @@ int transfer_select_radial_function(
       if (index_tt == ptr->index_tt_t2) {
         *radial_type = SCALAR_TEMPERATURE_2;
       }
+      if ((index_tt == ptr->index_tt_t0_reco) || (index_tt == ptr->index_tt_t0_reio)) {
+        *radial_type = SCALAR_TEMPERATURE_0;
+      }
+      if ((index_tt == ptr->index_tt_t1_reco) || (index_tt == ptr->index_tt_t1_reio)) {
+        *radial_type = SCALAR_TEMPERATURE_1;
+      }
+      if ((index_tt == ptr->index_tt_t2_reco) || (index_tt == ptr->index_tt_t2_reio)) {
+        *radial_type = SCALAR_TEMPERATURE_2;
+      }
       if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha))
         *radial_type = SCALAR_TEMPERATURE_0;
 

@@ -1395,6 +1395,12 @@ int perturbations_indices(
   index_type = index_type_common;
   class_define_index(ppt->index_tp_t0,            ppt->has_source_t,              index_type,1);
   class_define_index(ppt->index_tp_t1,            ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t0_reco,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t1_reco,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t2_reco,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t0_reio,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t1_reio,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t2_reio,       ppt->has_source_t,              index_type,1);
   class_define_index(ppt->index_tp_delta_m,       ppt->has_source_delta_m,        index_type,1);
   class_define_index(ppt->index_tp_delta_cb,      ppt->has_source_delta_cb,       index_type,1);
   class_define_index(ppt->index_tp_delta_tot,     ppt->has_source_delta_tot,      index_type,1);
@@ -7719,6 +7725,108 @@ int perturbations_sources(
           ppt->switch_pol * g * P;
       }
 
+    }
+
+    /*
+     * Scalar temperature reco/reio split.
+     * Use the same valley-based approach as p_reco and alpha_reco:
+     * t{0,1,2}_reco = t{0,1,2} for z >= z_split (recombination side), else 0.
+     * t{0,1,2}_reio = t{0,1,2} for z <  z_split (reionization side), else 0.
+     */
+    if (ppt->has_source_t == _TRUE_) {
+
+      double g_peak_reco_t = -1.0;
+      double g_peak_reio_t = -1.0;
+      double z_peak_reco_t = -1.0;
+      int index_peak_reco_t = -1;
+      int index_peak_reio_t = -1;
+      int index_start_t, index_end_t, index_valley_t;
+      double g_valley_t, z_split_t;
+
+      /* Step 1: find the global maximum of g(z) (recombination peak) */
+      for (index_th = 0; index_th < pth->tt_size; index_th++) {
+        const double g_tab =
+          pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+        if (g_tab > g_peak_reco_t) {
+          g_peak_reco_t = g_tab;
+          z_peak_reco_t = pth->z_table[index_th];
+          index_peak_reco_t = index_th;
+        }
+      }
+
+      /* Step 2: find the strongest lower-z local maximum (reionization peak) */
+      for (index_th = 1; index_th < pth->tt_size - 1; index_th++) {
+        const double z_tab = pth->z_table[index_th];
+        const double g_prev =
+          pth->thermodynamics_table[(index_th-1)*pth->th_size + pth->index_th_g];
+        const double g_tab =
+          pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+        const double g_next =
+          pth->thermodynamics_table[(index_th+1)*pth->th_size + pth->index_th_g];
+        if ((z_tab < z_peak_reco_t) && (g_tab >= g_prev) && (g_tab > g_next)) {
+          if (g_tab > g_peak_reio_t) {
+            g_peak_reio_t = g_tab;
+            index_peak_reio_t = index_th;
+          }
+        }
+      }
+
+      /* Fallback: use the highest g(z) below z_peak_reco as reio peak */
+      if (index_peak_reio_t < 0) {
+        for (index_th = 0; index_th < pth->tt_size; index_th++) {
+          const double z_tab = pth->z_table[index_th];
+          const double g_tab =
+            pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+          if ((z_tab < z_peak_reco_t) && (g_tab > g_peak_reio_t)) {
+            g_peak_reio_t = g_tab;
+            index_peak_reio_t = index_th;
+          }
+        }
+      }
+
+      if (index_peak_reio_t < 0) {
+        /* No reionization bump found: treat everything as recombination */
+        _set_source_(ppt->index_tp_t0_reco) = _set_source_(ppt->index_tp_t0);
+        _set_source_(ppt->index_tp_t1_reco) = _set_source_(ppt->index_tp_t1);
+        _set_source_(ppt->index_tp_t2_reco) = _set_source_(ppt->index_tp_t2);
+        _set_source_(ppt->index_tp_t0_reio) = 0.0;
+        _set_source_(ppt->index_tp_t1_reio) = 0.0;
+        _set_source_(ppt->index_tp_t2_reio) = 0.0;
+      }
+      else {
+        /* Step 3: find the valley (minimum of g between the two peaks) */
+        index_start_t = MIN(index_peak_reco_t, index_peak_reio_t);
+        index_end_t   = MAX(index_peak_reco_t, index_peak_reio_t);
+        index_valley_t = index_start_t;
+        g_valley_t = pth->thermodynamics_table[index_start_t*pth->th_size + pth->index_th_g];
+        for (index_th = index_start_t; index_th <= index_end_t; index_th++) {
+          const double g_tab =
+            pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+          if (g_tab < g_valley_t) {
+            g_valley_t = g_tab;
+            index_valley_t = index_th;
+          }
+        }
+        z_split_t = pth->z_table[index_valley_t];
+
+        /* Step 4: apply split using current redshift z */
+        if (z >= z_split_t) {
+          _set_source_(ppt->index_tp_t0_reco) = _set_source_(ppt->index_tp_t0);
+          _set_source_(ppt->index_tp_t1_reco) = _set_source_(ppt->index_tp_t1);
+          _set_source_(ppt->index_tp_t2_reco) = _set_source_(ppt->index_tp_t2);
+          _set_source_(ppt->index_tp_t0_reio) = 0.0;
+          _set_source_(ppt->index_tp_t1_reio) = 0.0;
+          _set_source_(ppt->index_tp_t2_reio) = 0.0;
+        }
+        else {
+          _set_source_(ppt->index_tp_t0_reco) = 0.0;
+          _set_source_(ppt->index_tp_t1_reco) = 0.0;
+          _set_source_(ppt->index_tp_t2_reco) = 0.0;
+          _set_source_(ppt->index_tp_t0_reio) = _set_source_(ppt->index_tp_t0);
+          _set_source_(ppt->index_tp_t1_reio) = _set_source_(ppt->index_tp_t1);
+          _set_source_(ppt->index_tp_t2_reio) = _set_source_(ppt->index_tp_t2);
+        }
+      }
     }
 
     /* scalar polarization */
