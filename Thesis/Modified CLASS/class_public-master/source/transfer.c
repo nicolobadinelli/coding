@@ -531,6 +531,7 @@ int transfer_indices(
     class_define_index(ptr->index_tt_alpha,     ppt->has_source_alpha,            index_tt,1);
     class_define_index(ptr->index_tt_alpha_reco,ppt->has_source_alpha,            index_tt,1);
     class_define_index(ptr->index_tt_alpha_reio,ppt->has_source_alpha,            index_tt,1);
+    class_define_index(ptr->index_tt_alpha_reco_peak,ppt->has_source_alpha,       index_tt,1);
     class_define_index(ptr->index_tt_density,ppt->has_nc_density,              index_tt,ppt->selection_num);
     class_define_index(ptr->index_tt_rsd,    ppt->has_nc_rsd,                  index_tt,ppt->selection_num);
     class_define_index(ptr->index_tt_d0,     ppt->has_nc_rsd,                  index_tt,ppt->selection_num);
@@ -998,6 +999,9 @@ int transfer_get_l_list(
           l_max=ppt->l_scalar_max;
 
         if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reio))
+          l_max=ppt->l_scalar_max;
+
+        if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reco_peak))
           l_max=ppt->l_scalar_max;
 
         if ((_index_tt_in_range_(ptr->index_tt_density, ppt->selection_num, ppt->has_nc_density)) ||
@@ -1588,6 +1592,9 @@ int transfer_get_source_correspondence(
         if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reio))
           tp_of_tt[index_md][index_tt]=ppt->index_tp_alpha_reio;
 
+        if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reco_peak))
+          tp_of_tt[index_md][index_tt]=ppt->index_tp_alpha;
+
         if (_index_tt_in_range_(ptr->index_tt_density, ppt->selection_num, ppt->has_nc_density))
           /* use here delta_cb rather than delta_m if density number counts calculated only for cold dark matter + baryon */
           /* (this important comment is referenced in a WARNING message in perturbations.c) */
@@ -1789,6 +1796,9 @@ int transfer_source_tau_size(
 
     if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reio))
       *tau_size = ppt->tau_size;
+
+    if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reco_peak))
+      *tau_size = 1;
 
     /* cmb lensing potential */
     if ((ppt->has_cl_cmb_lensing_potential == _TRUE_) && (index_tt == ptr->index_tt_lcmb)) {
@@ -2455,6 +2465,10 @@ int transfer_sources(
     if (_nonintegrated_ncl_ || _integrated_ncl_)
       redefine_source = _TRUE_;
 
+    /* visibility-peak diagnostic channel: single-point source at tau_rec */
+    if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reco_peak))
+      redefine_source = _TRUE_;
+
   }
 
   /* conformal time today */
@@ -2547,6 +2561,28 @@ int transfer_sources(
       }
 
       /* Non-integrated contributions to dCl/nCl need selection time sampling*/
+
+      /* visibility-peak diagnostic channel: evaluate S_alpha at tau_rec only */
+      if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reco_peak)) {
+
+        /* tau_size == 1 is guaranteed by transfer_source_tau_size for this channel.
+           Interpolate the full alpha source at the recombination visibility peak time. */
+        class_call(array_interpolate_two(ppt->tau_sampling,
+                                         1,
+                                         0,
+                                         interpolated_sources,
+                                         1,
+                                         ppt->tau_size,
+                                         tau_rec,
+                                         &sources[0],
+                                         1,
+                                         ptr->error_message),
+                   ptr->error_message,
+                   ptr->error_message);
+
+        tau0_minus_tau[0] = tau0 - tau_rec;
+        w_trapz[0] = 1.0;
+      }
 
       if (_nonintegrated_ncl_) {
 
@@ -4445,6 +4481,9 @@ int transfer_select_radial_function(
         *radial_type = SCALAR_TEMPERATURE_0;
 
       if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reio))
+        *radial_type = SCALAR_TEMPERATURE_0;
+
+      if ((ppt->has_source_alpha == _TRUE_) && (index_tt == ptr->index_tt_alpha_reco_peak))
         *radial_type = SCALAR_TEMPERATURE_0;
 
     }

@@ -1710,6 +1710,7 @@ int output_open_cl_file(
       class_fprintf_columntitle(*clfile,"aa",phr->has_aa,colnum);
       class_fprintf_columntitle(*clfile,"aa_reco",phr->has_aa_reco,colnum);
       class_fprintf_columntitle(*clfile,"aa_reio",phr->has_aa_reio,colnum);
+      class_fprintf_columntitle(*clfile,"aa_reco_peak",phr->has_aa_reco_peak,colnum);
       class_fprintf_columntitle(*clfile,"aT",phr->has_at,colnum);
       class_fprintf_columntitle(*clfile,"aT_reco",phr->has_at_reco,colnum);
       class_fprintf_columntitle(*clfile,"aT_reio",phr->has_at_reio,colnum);
@@ -1733,6 +1734,7 @@ int output_open_cl_file(
       class_fprintf_columntitle(*clfile,"aa",phr->has_aa,colnum);
       class_fprintf_columntitle(*clfile,"aa_reco",phr->has_aa_reco,colnum);
       class_fprintf_columntitle(*clfile,"aa_reio",phr->has_aa_reio,colnum);
+      class_fprintf_columntitle(*clfile,"aa_reco_peak",phr->has_aa_reco_peak,colnum);
       class_fprintf_columntitle(*clfile,"aT",phr->has_at,colnum);
       class_fprintf_columntitle(*clfile,"aT_reco",phr->has_at_reco,colnum);
       class_fprintf_columntitle(*clfile,"aT_reio",phr->has_at_reio,colnum);
@@ -1852,6 +1854,7 @@ int output_one_line_of_cl(
     class_fprintf_double(clfile, factor*cl[phr->index_ct_aa], phr->has_aa);
     class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_reco], phr->has_aa_reco);
     class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_reio], phr->has_aa_reio);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_reco_peak], phr->has_aa_reco_peak);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_at], phr->has_at);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_at_reco], phr->has_at_reco);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_at_reio], phr->has_at_reio);
@@ -1883,6 +1886,8 @@ int output_one_line_of_cl(
     if (phr->has_aa_reco == _TRUE_)
       index_ct_rest++;
     if (phr->has_aa_reio == _TRUE_)
+      index_ct_rest++;
+    if (phr->has_aa_reco_peak == _TRUE_)
       index_ct_rest++;
     if (phr->has_at == _TRUE_)
       index_ct_rest++;

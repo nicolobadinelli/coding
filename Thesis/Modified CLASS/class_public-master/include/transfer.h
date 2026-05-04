@@ -153,6 +153,7 @@ struct transfer {
   int index_tt_alpha;
   int index_tt_alpha_reco; /**< index for recombination contribution to birefringence rotation alpha */
   int index_tt_alpha_reio; /**< index for reionization contribution to birefringence rotation alpha */
+  int index_tt_alpha_reco_peak; /**< index for delta-like (visibility-peak) birefringence rotation alpha, diagnostic channel */
 
   int * tt_size;     /**< number of requested transfer types tt_size[index_md] for each mode */
 

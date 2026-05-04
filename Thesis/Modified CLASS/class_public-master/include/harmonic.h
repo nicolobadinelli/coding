@@ -59,6 +59,7 @@ struct harmonic {
   int has_aa; /**< do we want \f$ C_l^{\alpha\alpha}\f$? (alpha = birefringence rotation) */
   int has_aa_reco; /**< do we want \f$ C_l^{\alpha\alpha}\f$? (alpha = birefringence rotation, reconstructed from CMB lensing) */
   int has_aa_reio; /**< do we want \f$ C_l^{\alpha\alpha}\f$? (alpha = birefringence rotation, reionization) */
+  int has_aa_reco_peak; /**< do we want \f$ C_l^{\alpha\alpha}\f$? (alpha = birefringence rotation, visibility-peak diagnostic) */
   int has_at; /**< do we want \f$ C_l^{\alpha T}\f$? (alpha = birefringence rotation, T = temperature) */
   int has_ae; /**< do we want \f$ C_l^{\alpha E}\f$? (alpha = birefringence rotation, E = E-polarization) */
 
@@ -90,6 +91,7 @@ struct harmonic {
   int index_ct_aa; /**< index for type \f$ C_l^{\alpha \alpha} \f$*/
   int index_ct_aa_reco; /**< index for type \f$ C_l^{\alpha\alpha} \f$*/
   int index_ct_aa_reio; /**< index for type \f$ C_l^{\alpha\alpha} \f$*/
+  int index_ct_aa_reco_peak; /**< index for type \f$ C_l^{\alpha\alpha} \f$ from visibility-peak diagnostic */
   int index_ct_at; /**< index for type \f$ C_l^{\alpha T} \f$*/
   int index_ct_ae; /**< index for type \f$ C_l^{\alpha E} \f$*/
 

@@ -1008,11 +1008,16 @@ int harmonic_indices(
       phr->has_aa_reio = _TRUE_;
       phr->index_ct_aa_reio = index_ct;
       index_ct++;
+
+      phr->has_aa_reco_peak = _TRUE_;
+      phr->index_ct_aa_reco_peak = index_ct;
+      index_ct++;
     }
     else {
       phr->has_aa = _FALSE_;
       phr->has_aa_reco = _FALSE_;
       phr->has_aa_reio = _FALSE_;
+      phr->has_aa_reco_peak = _FALSE_;
     }
 
     if ((ppt->has_source_alpha == _TRUE_) && (ppt->has_scalars == _TRUE_) && (ppt->has_cl_cmb_temperature == _TRUE_)) {
@@ -1191,6 +1196,7 @@ int harmonic_indices(
       if (phr->has_aa == _TRUE_) phr->l_max_ct[ppt->index_md_scalars][phr->index_ct_aa] = ppt->l_scalar_max;
       if (phr->has_aa_reco == _TRUE_) phr->l_max_ct[ppt->index_md_scalars][phr->index_ct_aa_reco] = ppt->l_scalar_max;
       if (phr->has_aa_reio == _TRUE_) phr->l_max_ct[ppt->index_md_scalars][phr->index_ct_aa_reio] = ppt->l_scalar_max;
+      if (phr->has_aa_reco_peak == _TRUE_) phr->l_max_ct[ppt->index_md_scalars][phr->index_ct_aa_reco_peak] = ppt->l_scalar_max;
       if (phr->has_at == _TRUE_) phr->l_max_ct[ppt->index_md_scalars][phr->index_ct_at] = ppt->l_scalar_max;
       if (phr->has_at_reco == _TRUE_) phr->l_max_ct[ppt->index_md_scalars][phr->index_ct_at_reco] = ppt->l_scalar_max;
       if (phr->has_at_reio == _TRUE_) phr->l_max_ct[ppt->index_md_scalars][phr->index_ct_at_reio] = ppt->l_scalar_max;
@@ -1914,6 +1920,13 @@ int harmonic_compute_cl(
         * factor;
 
     /* aa_reio is computed post-integration as aa - aa_reco; skip integrand here */
+
+    if (_scalars_ && (phr->has_aa_reco_peak == _TRUE_))
+      cl_integrand[index_q*cl_integrand_num_columns+1+phr->index_ct_aa_reco_peak]=
+        primordial_pk[index_ic1_ic2]
+        * transfer_ic1[ptr->index_tt_alpha_reco_peak]
+        * transfer_ic2[ptr->index_tt_alpha_reco_peak]
+        * factor;
 
     /* alpha-T cross spectrum */
     if (_scalars_ && (phr->has_at == _TRUE_))
