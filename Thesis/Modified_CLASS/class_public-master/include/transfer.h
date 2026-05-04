@@ -189,11 +189,15 @@ struct transfer {
   int index_q_flat_approximation; /**< index of the first q value using the flat rescaling approximation */
   double tau_tomo_peak_reco; /**< conformal time of the recombination visibility peak used by the reco/reio split */
   double tau_tomo_peak_reio; /**< conformal time of the reionization visibility peak used by the reco/reio split */
+  double tau_tomo_split; /**< conformal-time split between reco/reio visibility windows */
   double tau_tomo_sigma_reco; /**< legacy field kept for source compatibility; unused in the visibility-valley split */
   double tau_tomo_sigma_reio; /**< legacy field kept for source compatibility; unused in the visibility-valley split */
   short has_tomo_peak_reio; /**< is a separate reionization visibility peak available? */
   double * tomo_reco_window; /**< visibility-informed reco partition evaluated on ppt->tau_sampling */
   double * tomo_reio_window; /**< visibility-informed reio partition evaluated on ppt->tau_sampling */
+
+  double g_alpha_reco_peak; /**< visibility at the recombination peak */
+  double g_alpha_reio_peak; /**< visibility at the reionization peak */
 
   short do_lcmb_full_limber; /**< in this particular run, will we use the full Limber scheme? */
 
@@ -607,6 +611,23 @@ extern "C" {
                          radial_function_type radial_type,
                          double * trsf
                          );
+
+  int transfer_integrate_alpha_split(
+                                     struct perturbations * ppt,
+                                     struct transfer * ptr,
+                                     struct transfer_workspace *ptw,
+                                     int index_q,
+                                     int index_md,
+                                     double l,
+                                     int index_l,
+                                     double k,
+                                     radial_function_type radial_type,
+                                     double tau0,
+                                     double tau_tomo_split,
+                                     double * alpha_total,
+                                     double * alpha_reco,
+                                     double * alpha_reio
+                                     );
 
   int transfer_limber(
                       struct transfer * ptr,

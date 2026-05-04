@@ -2736,13 +2736,18 @@ int input_read_parameters_species(struct file_content * pfc,
   /* 7.0) Spectator axion field */
   pba->has_chi = _FALSE_;
   pba->m_chi = 0.0;
+  pba->m_chi_input_eV = 0.0;
+  pba->m_chi_internal_Mpc = 0.0;
   pba->chi_ini = 1.0;
   pba->chi_prime_ini = 0.0;
   
   class_read_flag("use_chi", pba->has_chi);
 
   if (pba->has_chi == _TRUE_) {
-    class_read_double("m_chi", pba->m_chi);
+    class_read_double("m_chi", pba->m_chi_input_eV);
+    pba->m_chi_internal_Mpc =
+      pba->m_chi_input_eV * (_eV_ / _h_P_) * (_Mpc_over_m_ / _c_);
+    pba->m_chi = pba->m_chi_internal_Mpc;
     class_read_double("chi_ini", pba->chi_ini);
     class_read_double("chi_prime_ini", pba->chi_prime_ini);
   }

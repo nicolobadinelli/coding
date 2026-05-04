@@ -827,6 +827,7 @@ int background_init(
                     ) {
 
   /** Summary: */
+  pba->biref_debug = ppr->biref_debug;
 
   /** - write class version */
   if (pba->background_verbose > 0) {
@@ -1992,6 +1993,11 @@ int background_solve(
   }
 
   /** - perform the integration */
+  if (pba->biref_debug == _TRUE_) {
+    printf("BG BEFORE EVOLVER\n");
+    fflush(stdout);
+  }
+
   class_call(generic_evolver(background_derivs,
                              loga_ini,
                              loga_final,
@@ -2010,6 +2016,11 @@ int background_solve(
                              pba->error_message),
              pba->error_message,
              pba->error_message);
+
+  if (pba->biref_debug == _TRUE_) {
+    printf("BG AFTER EVOLVER\n");
+    fflush(stdout);
+  }
 
   /** - recover some quantities today */
   /* -> age in Gyears */
@@ -2647,6 +2658,7 @@ int background_derivs(
 
   /** - define local variables */
 
+  static int background_derivs_entered = 0;
   struct background_parameters_and_workspace * pbpaw;
   struct background * pba;
   double * pvecback, a, H, rho_M;
@@ -2654,6 +2666,12 @@ int background_derivs(
   pbpaw = parameters_and_workspace;
   pba =  pbpaw->pba;
   pvecback = pbpaw->pvecback;
+
+  if ((pba->biref_debug == _TRUE_) && (background_derivs_entered == 0)) {
+    printf("BG DERIVS ENTERED\n");
+    fflush(stdout);
+    background_derivs_entered = 1;
+  }
 
   /** - scale factor a (in fact, given our normalisation conventions, this stands for a/a_0) */
   a = exp(loga);
@@ -2665,6 +2683,34 @@ int background_derivs(
 
   /** - Short hand notation for Hubble */
   H = pvecback[pba->index_bg_H];
+
+  if ((pba->biref_debug == _TRUE_) && (pba->has_chi == _TRUE_)) {
+    double chi = y[pba->index_bi_chi0];
+    double chi_prime = y[pba->index_bi_chi0_prime];
+    double dVchi = dV_chi(pba, chi);
+    double ddVchi = ddV_chi(pba, chi);
+    if ((!isfinite(chi)) ||
+        (!isfinite(chi_prime)) ||
+        (!isfinite(H)) ||
+        (!isfinite(dVchi)) ||
+        (!isfinite(ddVchi)) ||
+        (fabs(chi) > 1.e30) ||
+        (fabs(chi_prime) > 1.e30) ||
+        (fabs(H) > 1.e30) ||
+        (fabs(dVchi) > 1.e30) ||
+        (fabs(ddVchi) > 1.e30)) {
+      printf("BG DERIVS BAD chi=%e chi_prime=%e H=%e dV_dchi=%e d2V_dchi2=%e loga=%e\n",
+             chi,
+             chi_prime,
+             H,
+             dVchi,
+             ddVchi,
+             loga);
+      fflush(stdout);
+      class_stop(error_message,
+                 "Bad chi background derivative value.");
+    }
+  }
 
   /** - calculate derivative of cosmological time \f$ dt/dloga = 1/H \f$ */
   dy[pba->index_bi_time] = 1./H;
@@ -3058,31 +3104,24 @@ double ddV_scf(
   return ddV_e_scf(pba,phi)*V_p_scf(pba,phi) + 2*dV_e_scf(pba,phi)*dV_p_scf(pba,phi) + V_e_scf(pba,phi)*ddV_p_scf(pba,phi);
 }
 
+static double m_chi_in_Mpc_inverse(struct background *pba) {
+  return pba->m_chi_internal_Mpc;
+}
+
 double V_chi(struct background *pba, double chi) {
-  double m = pba->m_chi;
-  /*
-   * Paper model (Eq. 12 of arXiv:2211.06380):
-   *   V = m_chi^2 M_Pl^2 [1 - cos(chi / M_Pl)]^2
-   * Here chi is stored in reduced-Planck units, hence chi/M_Pl = chi/sqrt(8 pi).
-   */
-  const double s = sqrt(8.0*_PI_);
-  double x = chi / s;
-  double one_minus_cos = 1.0 - cos(x);
-  return (8.0*_PI_)*m*m*one_minus_cos*one_minus_cos;
+  double m = m_chi_in_Mpc_inverse(pba);
+  double one_minus_cos = 1.0 - cos(chi);
+  return m*m*one_minus_cos*one_minus_cos;
 }
 
 double dV_chi(struct background *pba, double chi) {
-  double m = pba->m_chi;
-  const double s = sqrt(8.0*_PI_);
-  double x = chi / s;
-  return (2.0*s) * m*m * (1.0 - cos(x)) * sin(x);
+  double m = m_chi_in_Mpc_inverse(pba);
+  return 2.0*m*m*(1.0 - cos(chi))*sin(chi);
 }
 
 double ddV_chi(struct background *pba, double chi) {
-  double m = pba->m_chi;
-  const double s = sqrt(8.0*_PI_);
-  double x = chi / s;
-  double sinx = sin(x);
-  double cosx = cos(x);
-  return 2.0 * m*m * (sinx*sinx + (1.0 - cosx)*cosx);
+  double m = m_chi_in_Mpc_inverse(pba);
+  double sin_chi = sin(chi);
+  double cos_chi = cos(chi);
+  return 2.0*m*m*(sin_chi*sin_chi + (1.0 - cos_chi)*cos_chi);
 }

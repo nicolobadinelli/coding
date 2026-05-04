@@ -246,6 +246,7 @@ class_precision_parameter(z_start_chi_approx,double,2.0e3) /**< Switching redshi
  */
 
 class_precision_parameter(lambda_over_f,double,0.0) /**< user parameter: lambda/f used for birefringence alpha source */
+class_precision_parameter(biref_debug,int,_FALSE_) /**< optional sparse diagnostics for birefringence development */
 
 class_precision_parameter(k_min_tau0,double,0.1) /**< number defining k_min for the computation of Cl's and P(k)'s (dimensionless): (k_min tau_0), usually chosen much smaller than one */
 

@@ -59,14 +59,17 @@ struct harmonic {
   int has_aa; /**< do we want \f$ C_l^{\alpha\alpha}\f$? (alpha = birefringence rotation) */
   int has_aa_reco; /**< do we want \f$ C_l^{\alpha\alpha}\f$? (alpha = birefringence rotation, reconstructed from CMB lensing) */
   int has_aa_reio; /**< do we want \f$ C_l^{\alpha\alpha}\f$? (alpha = birefringence rotation, reionization) */
+  int has_aa_cross; /**< diagnostic cross term \f$ 2\langle\alpha_{\rm reco}\alpha_{\rm reio}\rangle \f$ */
   int has_at; /**< do we want \f$ C_l^{\alpha T}\f$? (alpha = birefringence rotation, T = temperature) */
   int has_ae; /**< do we want \f$ C_l^{\alpha E}\f$? (alpha = birefringence rotation, E = E-polarization) */
 
   /* split birefringence cross-spectra */
   int has_at_reco; /**< do we want \f$ C_l^{\alpha T}\f$? (alpha = birefringence rotation, recombination contribution) */
   int has_at_reio; /**< do we want \f$ C_l^{\alpha T}\f$? (alpha = birefringence rotation, reionization contribution) */
+  int has_at_cross; /**< diagnostic cross remainder \f$ C_l^{\alpha T} - C_l^{\alpha_{\rm reco}T_{\rm reco}} - C_l^{\alpha_{\rm reio}T_{\rm reio}} \f$ */
   int has_ae_reco; /**< do we want \f$ C_l^{\alpha E}\f$? (alpha = birefringence rotation, recombination contribution) */
   int has_ae_reio; /**< do we want \f$ C_l^{\alpha E}\f$? (alpha = birefringence rotation, reionization contribution) */
+  int has_ae_cross; /**< diagnostic cross remainder \f$ C_l^{\alpha E} - C_l^{\alpha_{\rm reco}E_{\rm reco}} - C_l^{\alpha_{\rm reio}E_{\rm reio}} \f$ */
   /* split unlensed spectra kept for external birefringence rotation */
   int has_ee_reco; /**< do we want split \f$ C_l^{EE} \f$ from recombination? */
   int has_ee_reio; /**< do we want split \f$ C_l^{EE} \f$ from reionization? */
@@ -95,14 +98,17 @@ struct harmonic {
   int index_ct_aa; /**< index for type \f$ C_l^{\alpha \alpha} \f$*/
   int index_ct_aa_reco; /**< index for type \f$ C_l^{\alpha\alpha} \f$*/
   int index_ct_aa_reio; /**< index for type \f$ C_l^{\alpha\alpha} \f$*/
+  int index_ct_aa_cross; /**< index for diagnostic cross term \f$ 2\langle\alpha_{\rm reco}\alpha_{\rm reio}\rangle \f$*/
   int index_ct_at; /**< index for type \f$ C_l^{\alpha T} \f$*/
   int index_ct_ae; /**< index for type \f$ C_l^{\alpha E} \f$*/
 
   /* split birefringence cross-spectra indices */
   int index_ct_at_reco; /**< index for type \f$ C_l^{\alpha T} \f$ from recombination */
   int index_ct_at_reio; /**< index for type \f$ C_l^{\alpha T} \f$ from reionization */
+  int index_ct_at_cross; /**< index for diagnostic cross remainder in \f$ \alpha T \f$ */
   int index_ct_ae_reco; /**< index for type \f$ C_l^{\alpha E} \f$ from recombination */
   int index_ct_ae_reio; /**< index for type \f$ C_l^{\alpha E} \f$ from reionization */
+  int index_ct_ae_cross; /**< index for diagnostic cross remainder in \f$ \alpha E \f$ */
   /* split unlensed spectra indices */
   int index_ct_ee_reco; /**< index for split \f$ C_l^{EE} \f$ from recombination */
   int index_ct_ee_reio; /**< index for split \f$ C_l^{EE} \f$ from reionization */

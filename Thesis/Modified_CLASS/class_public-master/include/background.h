@@ -189,10 +189,13 @@ struct background
   int index_bg_dV_chi;      /**< spectator potential derivative V'(chi0) */
   int index_bg_ddV_chi;     /**< spectator potential second derivative V''(chi0) */
   
-  double m_chi;             /* mass of the spectator field chi */
+  double m_chi;             /* legacy alias for internal spectator mass in Mpc^-1 */
+  double m_chi_input_eV;    /* input spectator mass in eV */
+  double m_chi_internal_Mpc;/* spectator mass converted once to Mpc^-1 */
   double chi_ini;           /* initial value of the spectator field chi */
   double chi_prime_ini;     /* initial value of the derivative of the spectator field chi wrt conformal time */
   short has_chi;            /* flag for the presence of the spectator field chi */  
+  short biref_debug;        /* optional sparse birefringence diagnostics */
 
   int index_bg_rho_ncdm1;     /**< density of first ncdm species (others contiguous) */
   int index_bg_p_ncdm1;       /**< pressure of first ncdm species (others contiguous) */

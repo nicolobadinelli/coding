@@ -28,6 +28,100 @@
 #include "parallel.h"
 #include "background.h"
 
+/**
+ * Find the visibility minimum between the recombination and reionization
+ * peaks. Recombination-side tomographic sources use tau < tau_split; if
+ * no separate reionization bump is found, keep the full history in the
+ * recombination channel.
+ */
+static int perturbations_visibility_split(
+                                          struct thermodynamics * pth,
+                                          double * z_split,
+                                          double * tau_split
+                                          ) {
+
+  int index_th;
+  int reco_peak = -1;
+  int reio_peak = -1;
+  int valley;
+  int index_start;
+  int index_end;
+  double g_peak_reco = -1.0;
+  double g_peak_reio = -1.0;
+  double g_prev;
+  double g_mid;
+  double g_next;
+  double g_valley;
+  double z_reco;
+  double z_tab;
+
+  *z_split = 0.0;
+  *tau_split = pth->tau_table[pth->tt_size - 1];
+
+  for (index_th = 0; index_th < pth->tt_size; index_th++) {
+    g_mid = pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+    if (g_mid > g_peak_reco) {
+      g_peak_reco = g_mid;
+      reco_peak = index_th;
+    }
+  }
+
+  class_test(reco_peak < 0,
+             pth->error_message,
+             "Could not identify the recombination visibility peak in perturbations_visibility_split.");
+
+  z_reco = pth->z_table[reco_peak];
+
+  for (index_th = 1; index_th < pth->tt_size - 1; index_th++) {
+    z_tab = pth->z_table[index_th];
+    g_prev = pth->thermodynamics_table[(index_th-1)*pth->th_size + pth->index_th_g];
+    g_mid  = pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+    g_next = pth->thermodynamics_table[(index_th+1)*pth->th_size + pth->index_th_g];
+
+    if ((z_tab < z_reco) &&
+        (g_mid >= g_prev) &&
+        (g_mid > g_next) &&
+        (g_mid > g_peak_reio)) {
+      g_peak_reio = g_mid;
+      reio_peak = index_th;
+    }
+  }
+
+  if (reio_peak < 0) {
+    for (index_th = 0; index_th < pth->tt_size; index_th++) {
+      z_tab = pth->z_table[index_th];
+      g_mid = pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+
+      if ((z_tab < z_reco) && (g_mid > g_peak_reio)) {
+        g_peak_reio = g_mid;
+        reio_peak = index_th;
+      }
+    }
+  }
+
+  if (reio_peak < 0) {
+    return _SUCCESS_;
+  }
+
+  index_start = MIN(reco_peak, reio_peak);
+  index_end = MAX(reco_peak, reio_peak);
+  valley = index_start;
+  g_valley = pth->thermodynamics_table[index_start*pth->th_size + pth->index_th_g];
+
+  for (index_th = index_start; index_th <= index_end; index_th++) {
+    g_mid = pth->thermodynamics_table[index_th*pth->th_size + pth->index_th_g];
+    if (g_mid < g_valley) {
+      g_valley = g_mid;
+      valley = index_th;
+    }
+  }
+
+  *z_split = pth->z_table[valley];
+  *tau_split = pth->tau_table[valley];
+
+  return _SUCCESS_;
+}
+
 
 /**
  * Source function \f$ S^{X} (k, \tau) \f$ at a given conformal time tau.
@@ -1165,6 +1259,17 @@ int perturbations_indices(
   class_alloc(ppt->late_sources,  ppt->md_size * sizeof(double *),ppt->error_message);
   class_alloc(ppt->ddlate_sources,ppt->md_size * sizeof(double *),ppt->error_message);
 
+  class_call(perturbations_visibility_split(pth,
+                                            &ppt->z_tomo_split,
+                                            &ppt->tau_tomo_split),
+             pth->error_message,
+             ppt->error_message);
+
+  ppt->delta_chi_diag_ini_set = _FALSE_;
+  ppt->delta_chi_diag_rec_set = _FALSE_;
+  ppt->delta_chi_diag_ini_score = 1.e99;
+  ppt->delta_chi_diag_rec_score = 1.e99;
+
   /** - initialize variables for the output of k values */
 
   ppt->index_k_output_values=NULL;
@@ -1393,6 +1498,14 @@ int perturbations_indices(
   index_type = index_type_common;
   class_define_index(ppt->index_tp_t0,            ppt->has_source_t,              index_type,1);
   class_define_index(ppt->index_tp_t1,            ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t0_reco,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t1_reco,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t2_reco,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t0_reio,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t1_reio,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_t2_reio,       ppt->has_source_t,              index_type,1);
+  class_define_index(ppt->index_tp_p_reco,        ppt->has_source_p,              index_type,1);
+  class_define_index(ppt->index_tp_p_reio,        ppt->has_source_p,              index_type,1);
   class_define_index(ppt->index_tp_delta_m,       ppt->has_source_delta_m,        index_type,1);
   class_define_index(ppt->index_tp_delta_cb,      ppt->has_source_delta_cb,       index_type,1);
   class_define_index(ppt->index_tp_delta_tot,     ppt->has_source_delta_tot,      index_type,1);
@@ -1434,7 +1547,7 @@ int perturbations_indices(
   class_define_index(ppt->index_tp_H_T_Nb_prime,  ppt->has_source_H_T_Nb_prime,   index_type,1);
   class_define_index(ppt->index_tp_k2gamma_Nb,    ppt->has_source_k2gamma_Nb,     index_type,1);
   class_define_index(ppt->index_tp_alpha,         ppt->has_source_alpha,          index_type,1);
-
+  
   class_test(index_type == 0,
              ppt->error_message,
              "inconsistent input: you asked for scalars, so you should have at least one non-zero scalar source type (temperature, polarization, lensing/gravitational potential, ...). Please adjust your input.");
@@ -5504,11 +5617,39 @@ int perturbations_initial_conditions(struct precision * ppr,
         /*  a*a/k/k/ppw->pvecback[pba->index_bg_phi_prime_scf]*k*ktau_three/4.*1./(4.-6.*(1./3.)+3.*1.) * (ppw->pvecback[pba->index_bg_rho_scf] + ppw->pvecback[pba->index_bg_p_scf])* ppr->curvature_ini * s2_squared; */
       }
       if (pba->has_chi == _TRUE_) {
-        /* Paper-matching adiabatic spectator ICs:
-           the background normalization is set by chi_ini/chi_prime_ini,
-           while the perturbations start from delta_chi = delta_chi' = 0. */
-        ppw->pv->y[ppw->pv->index_pt_delta_chi]  = 0.;
-        ppw->pv->y[ppw->pv->index_pt_deltap_chi] = 0.;
+        double chi0 = ppw->pvecback[pba->index_bg_chi0];
+        double chi_prime = ppw->pvecback[pba->index_bg_chi0_prime];
+        double dV0 = dV_chi(pba, chi0);
+        double chi_prime_prime =
+          -2.0 * a_prime_over_a * chi_prime
+          - a * a * dV0;
+
+        /* Synchronous-gauge adiabatic seed for a frozen spectator field. */
+        ppw->pv->y[ppw->pv->index_pt_delta_chi] = 0.0;
+        ppw->pv->y[ppw->pv->index_pt_deltap_chi] = 0.0;
+
+        if ((index_md == ppt->index_md_scalars) &&
+            (index_ic == ppt->index_ic_ad)) {
+          double diag_score = fabs(log(k/1.0e-3));
+#pragma omp critical(delta_chi_diag_update)
+          {
+            if ((ppt->delta_chi_diag_ini_set == _FALSE_) ||
+                (diag_score < ppt->delta_chi_diag_ini_score)) {
+              ppt->delta_chi_diag_ini_set = _TRUE_;
+              ppt->delta_chi_diag_ini_score = diag_score;
+              ppt->delta_chi_diag_k_ini = k;
+              ppt->delta_chi_diag_tau_ini = tau;
+              ppt->delta_chi_diag_chi0_ini =
+                ppw->pvecback[pba->index_bg_chi0];
+              ppt->delta_chi_diag_chi0_prime_ini = chi_prime;
+              ppt->delta_chi_diag_chi0_double_prime_ini = chi_prime_prime;
+              ppt->delta_chi_diag_delta_ini =
+                ppw->pv->y[ppw->pv->index_pt_delta_chi];
+              ppt->delta_chi_diag_delta_prime_ini =
+                ppw->pv->y[ppw->pv->index_pt_deltap_chi];
+            }
+          }
+        }
       }
         /* delta_fld expression * rho_scf with the w = 1/3, c_s = 1
            a*a/ppw->pvecback[pba->index_bg_phi_prime_scf]*( - ktau_two/4.*(1.+1./3.)*(4.-3.*1.)/(4.-6.*(1/3.)+3.*1.)*ppw->pvecback[pba->index_bg_rho_scf] - ppw->pvecback[pba->index_bg_dV_scf]*ppw->pv->y[ppw->pv->index_pt_phi_scf])* ppr->curvature_ini * s2_squared; */
@@ -7716,6 +7857,23 @@ int perturbations_sources(
         _set_source_(ppt->index_tp_t2) =
           ppt->switch_pol * g * P;
       }
+
+      if (tau < ppt->tau_tomo_split) {
+        _set_source_(ppt->index_tp_t0_reco) = _set_source_(ppt->index_tp_t0);
+        _set_source_(ppt->index_tp_t1_reco) = _set_source_(ppt->index_tp_t1);
+        _set_source_(ppt->index_tp_t2_reco) = _set_source_(ppt->index_tp_t2);
+        _set_source_(ppt->index_tp_t0_reio) = 0.0;
+        _set_source_(ppt->index_tp_t1_reio) = 0.0;
+        _set_source_(ppt->index_tp_t2_reio) = 0.0;
+      }
+      else {
+        _set_source_(ppt->index_tp_t0_reco) = 0.0;
+        _set_source_(ppt->index_tp_t1_reco) = 0.0;
+        _set_source_(ppt->index_tp_t2_reco) = 0.0;
+        _set_source_(ppt->index_tp_t0_reio) = _set_source_(ppt->index_tp_t0);
+        _set_source_(ppt->index_tp_t1_reio) = _set_source_(ppt->index_tp_t1);
+        _set_source_(ppt->index_tp_t2_reio) = _set_source_(ppt->index_tp_t2);
+      }
     }
 
       /* scalar polarization */
@@ -7727,6 +7885,15 @@ int perturbations_sources(
          established in CMBFAST and CAMB. */
 
       _set_source_(ppt->index_tp_p) = sqrt(6.) * g * P;
+
+      if (tau < ppt->tau_tomo_split) {
+        _set_source_(ppt->index_tp_p_reco) = _set_source_(ppt->index_tp_p);
+        _set_source_(ppt->index_tp_p_reio) = 0.0;
+      }
+      else {
+        _set_source_(ppt->index_tp_p_reco) = 0.0;
+        _set_source_(ppt->index_tp_p_reio) = _set_source_(ppt->index_tp_p);
+      }
     }
 
     /* now, non-CMB sources */
@@ -7924,36 +8091,67 @@ int perturbations_sources(
 
       /*
        * Line-of-sight birefringence source.
-       * IMPORTANT: y[index_pt_delta_chi] is gauge-dependent.
-       * - In synchronous gauge, convert to a gauge-invariant/Newtonian-like field fluctuation:
-       *     delta_chi_N = delta_chi_syn + chi0' * alpha_metric
-       * - In Newtonian gauge, y[index_pt_delta_chi] is already the appropriate field fluctuation.
-       *
-       * The transfer source for anisotropic birefringence must carry the
-       * visibility weighting, exactly like the standard CMB last-scattering
-       * sources. The transfer module may later localize this full source in
-       * tau for the reco/reio tomography channels, but the underlying source
-       * itself is proportional to g(tau) * delta_chi.
+       * Construct the full gauge-corrected source once, then split that same
+       * source in time.
        */
 
-      double delta_chi_for_alpha = 0.0;
+      static const double diag_k_targets[5] = {1.e-5, 3.e-5, 1.e-4, 3.e-4, 1.e-3};
+      static int printed_rec[5] = {0,0,0,0,0};
+      static int printed_reio[5] = {0,0,0,0,0};
+      static int printed_reio_delta[5] = {0,0,0,0,0};
+      double raw_delta_chi = y[ppw->pv->index_pt_delta_chi];
+      double gauge_term = 0.0;
+      double delta_chi_alpha = raw_delta_chi;
+      double tau_rec_peak = pth->tau_rec;
+      double tau_reio_peak = pth->conf_time_reio;
+      int ik_diag;
 
       if (ppt->gauge == synchronous) {
-        const double delta_chi_syn = y[ppw->pv->index_pt_delta_chi];
-        const double chi0_prime    = pvecback[pba->index_bg_chi0_prime];
-        const double alpha_metric  = pvecmetric[ppw->index_mt_alpha];
-        delta_chi_for_alpha = delta_chi_syn + chi0_prime * alpha_metric;
-      }
-      else if (ppt->gauge == newtonian) {
-        delta_chi_for_alpha = y[ppw->pv->index_pt_delta_chi];
-      }
-      else {
-        delta_chi_for_alpha = y[ppw->pv->index_pt_delta_chi];
+        gauge_term =
+          pvecmetric[ppw->index_mt_alpha] *
+          ppw->pvecback[pba->index_bg_chi0_prime];
+        delta_chi_alpha += gauge_term;
       }
 
-      _set_source_(ppt->index_tp_alpha) =
-        (-0.5 * ppr->lambda_over_f) * g * delta_chi_for_alpha;
+      double alpha_total =
+        (-0.5 * ppr->lambda_over_f) * g * delta_chi_alpha;
+
+      _set_source_(ppt->index_tp_alpha) = alpha_total;
+
+      if (ppr->biref_debug == _TRUE_) {
+        for (ik_diag = 0; ik_diag < 5; ik_diag++) {
+          double k_close = fabs(log(k/diag_k_targets[ik_diag]));
+          double tau_rec_close = fabs((tau - tau_rec_peak)/tau_rec_peak);
+          double tau_reio_close = fabs((tau - tau_reio_peak)/tau_reio_peak);
+          if ((printed_reio_delta[ik_diag] == 0) && (k_close < 5.e-2) && (tau_reio_close < 5.e-3)) {
+            printed_reio_delta[ik_diag] = 1;
+            fprintf(stdout,
+                    "[REIO_DELTA_CHI_DIAG] k_target=%e k=%e tau=%e delta_chi=%e gauge_term=%e delta_chi_corrected=%e g=%e S_alpha=%e\n",
+                    diag_k_targets[ik_diag], k, tau, raw_delta_chi, gauge_term, delta_chi_alpha, g, alpha_total);
+            fflush(stdout);
+          }
+          if ((printed_rec[ik_diag] == 0) && (k_close < 5.e-2) && (tau_rec_close < 5.e-3)) {
+            printed_rec[ik_diag] = 1;
+            fprintf(stdout,
+                    "[SOURCE_DIAG_REC] k_target=%e k=%e tau=%e raw_delta_chi=%e gauge_term=%e delta_chi_corrected=%e chi0=%e chi0_prime=%e g=%e S_alpha=%e\n",
+                    diag_k_targets[ik_diag], k, tau, raw_delta_chi, gauge_term, delta_chi_alpha,
+                    ppw->pvecback[pba->index_bg_chi0],
+                    ppw->pvecback[pba->index_bg_chi0_prime],
+                    g, alpha_total);
+          }
+          if ((printed_reio[ik_diag] == 0) && (k_close < 5.e-2) && (tau_reio_close < 5.e-2)) {
+            printed_reio[ik_diag] = 1;
+            fprintf(stdout,
+                    "[SOURCE_DIAG_REIO] k_target=%e k=%e tau=%e raw_delta_chi=%e gauge_term=%e delta_chi_corrected=%e chi0=%e chi0_prime=%e g=%e S_alpha=%e\n",
+                    diag_k_targets[ik_diag], k, tau, raw_delta_chi, gauge_term, delta_chi_alpha,
+                    ppw->pvecback[pba->index_bg_chi0],
+                    ppw->pvecback[pba->index_bg_chi0_prime],
+                    g, alpha_total);
+          }
+        }
+      }
     }
+
     /* delta_dr */
     if (ppt->has_source_delta_dr == _TRUE_) {
       f_dr = pow(a2/pba->H0,2)*pvecback[pba->index_bg_rho_dr];

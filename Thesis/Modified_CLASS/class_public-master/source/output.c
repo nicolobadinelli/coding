@@ -1710,16 +1710,15 @@ int output_open_cl_file(
       class_fprintf_columntitle(*clfile,"aa",phr->has_aa,colnum);
       class_fprintf_columntitle(*clfile,"aa_reco",phr->has_aa_reco,colnum);
       class_fprintf_columntitle(*clfile,"aa_reio",phr->has_aa_reio,colnum);
+      class_fprintf_columntitle(*clfile,"Caa_cross",phr->has_aa_cross,colnum);
       class_fprintf_columntitle(*clfile,"aT",phr->has_at,colnum);
       class_fprintf_columntitle(*clfile,"aT_reco",phr->has_at_reco,colnum);
       class_fprintf_columntitle(*clfile,"aT_reio",phr->has_at_reio,colnum);
+      class_fprintf_columntitle(*clfile,"aT_cross",phr->has_at_cross,colnum);
       class_fprintf_columntitle(*clfile,"aE",phr->has_ae,colnum);
       class_fprintf_columntitle(*clfile,"aE_reco",phr->has_ae_reco,colnum);
       class_fprintf_columntitle(*clfile,"aE_reio",phr->has_ae_reio,colnum);
-      class_fprintf_columntitle(*clfile,"EE_reco",phr->has_ee_reco,colnum);
-      class_fprintf_columntitle(*clfile,"EE_reio",phr->has_ee_reio,colnum);
-      class_fprintf_columntitle(*clfile,"TE_reco",phr->has_te_reco,colnum);
-      class_fprintf_columntitle(*clfile,"TE_reio",phr->has_te_reio,colnum);
+      class_fprintf_columntitle(*clfile,"aE_cross",phr->has_ae_cross,colnum);
     }
     else if (pop->output_format == camb_format) {
       class_fprintf_columntitle(*clfile,"TT",phr->has_tt,colnum);
@@ -1732,16 +1731,15 @@ int output_open_cl_file(
       class_fprintf_columntitle(*clfile,"aa",phr->has_aa,colnum);
       class_fprintf_columntitle(*clfile,"aa_reco",phr->has_aa_reco,colnum);
       class_fprintf_columntitle(*clfile,"aa_reio",phr->has_aa_reio,colnum);
+      class_fprintf_columntitle(*clfile,"Caa_cross",phr->has_aa_cross,colnum);
       class_fprintf_columntitle(*clfile,"aT",phr->has_at,colnum);
       class_fprintf_columntitle(*clfile,"aT_reco",phr->has_at_reco,colnum);
       class_fprintf_columntitle(*clfile,"aT_reio",phr->has_at_reio,colnum);
+      class_fprintf_columntitle(*clfile,"aT_cross",phr->has_at_cross,colnum);
       class_fprintf_columntitle(*clfile,"aE",phr->has_ae,colnum);
       class_fprintf_columntitle(*clfile,"aE_reco",phr->has_ae_reco,colnum);
       class_fprintf_columntitle(*clfile,"aE_reio",phr->has_ae_reio,colnum);
-      class_fprintf_columntitle(*clfile,"EE_reco",phr->has_ee_reco,colnum);
-      class_fprintf_columntitle(*clfile,"EE_reio",phr->has_ee_reio,colnum);
-      class_fprintf_columntitle(*clfile,"TE_reco",phr->has_te_reco,colnum);
-      class_fprintf_columntitle(*clfile,"TE_reio",phr->has_te_reio,colnum);
+      class_fprintf_columntitle(*clfile,"aE_cross",phr->has_ae_cross,colnum);
     }
 
     /** - Next deal with entries that are independent of format type */
@@ -1832,8 +1830,50 @@ int output_one_line_of_cl(
   }
 
   if (pop->output_format == class_format) {
-
-    for (index_ct=0; index_ct < ct_size; index_ct++) {
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_tt], phr->has_tt);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_ee], phr->has_ee);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_te], phr->has_te);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_bb], phr->has_bb);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_pp], phr->has_pp);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_tp], phr->has_tp);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_ep], phr->has_ep);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_aa], phr->has_aa);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_reco], phr->has_aa_reco);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_reio], phr->has_aa_reio);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_cross], phr->has_aa_cross);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_at], phr->has_at);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_at_reco], phr->has_at_reco);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_at_reio], phr->has_at_reio);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_at_cross], phr->has_at_cross);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_ae], phr->has_ae);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_ae_reco], phr->has_ae_reco);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_ae_reio], phr->has_ae_reio);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_ae_cross], phr->has_ae_cross);
+    index_ct_rest = 0;
+    if (phr->has_tt == _TRUE_) index_ct_rest++;
+    if (phr->has_ee == _TRUE_) index_ct_rest++;
+    if (phr->has_te == _TRUE_) index_ct_rest++;
+    if (phr->has_bb == _TRUE_) index_ct_rest++;
+    if (phr->has_pp == _TRUE_) index_ct_rest++;
+    if (phr->has_tp == _TRUE_) index_ct_rest++;
+    if (phr->has_ep == _TRUE_) index_ct_rest++;
+    if (phr->has_aa == _TRUE_) index_ct_rest++;
+    if (phr->has_aa_reco == _TRUE_) index_ct_rest++;
+    if (phr->has_aa_reio == _TRUE_) index_ct_rest++;
+    if (phr->has_aa_cross == _TRUE_) index_ct_rest++;
+    if (phr->has_at == _TRUE_) index_ct_rest++;
+    if (phr->has_at_reco == _TRUE_) index_ct_rest++;
+    if (phr->has_at_reio == _TRUE_) index_ct_rest++;
+    if (phr->has_at_cross == _TRUE_) index_ct_rest++;
+    if (phr->has_ae == _TRUE_) index_ct_rest++;
+    if (phr->has_ae_reco == _TRUE_) index_ct_rest++;
+    if (phr->has_ae_reio == _TRUE_) index_ct_rest++;
+    if (phr->has_ae_cross == _TRUE_) index_ct_rest++;
+    if (phr->has_ee_reco == _TRUE_) index_ct_rest++;
+    if (phr->has_ee_reio == _TRUE_) index_ct_rest++;
+    if (phr->has_te_reco == _TRUE_) index_ct_rest++;
+    if (phr->has_te_reio == _TRUE_) index_ct_rest++;
+    for (index_ct=index_ct_rest; index_ct < ct_size; index_ct++) {
       class_fprintf_double(clfile, factor*cl[index_ct], _TRUE_);
     }
     fprintf(clfile,"\n");
@@ -1850,16 +1890,15 @@ int output_one_line_of_cl(
     class_fprintf_double(clfile, factor*cl[phr->index_ct_aa], phr->has_aa);
     class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_reco], phr->has_aa_reco);
     class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_reio], phr->has_aa_reio);
+    class_fprintf_double(clfile, factor*cl[phr->index_ct_aa_cross], phr->has_aa_cross);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_at], phr->has_at);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_at_reco], phr->has_at_reco);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_at_reio], phr->has_at_reio);
+    class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_at_cross], phr->has_at_cross);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_ae], phr->has_ae);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_ae_reco], phr->has_ae_reco);
     class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_ae_reio], phr->has_ae_reio);
-    class_fprintf_double(clfile, factor*pow(pba->T_cmb*1.e6,2)*cl[phr->index_ct_ee_reco], phr->has_ee_reco);
-    class_fprintf_double(clfile, factor*pow(pba->T_cmb*1.e6,2)*cl[phr->index_ct_ee_reio], phr->has_ee_reio);
-    class_fprintf_double(clfile, factor*pow(pba->T_cmb*1.e6,2)*cl[phr->index_ct_te_reco], phr->has_te_reco);
-    class_fprintf_double(clfile, factor*pow(pba->T_cmb*1.e6,2)*cl[phr->index_ct_te_reio], phr->has_te_reio);
+    class_fprintf_double(clfile, factor*pba->T_cmb*1.e6*cl[phr->index_ct_ae_cross], phr->has_ae_cross);
     index_ct_rest = 0;
     if (phr->has_tt == _TRUE_)
       index_ct_rest++;
@@ -1881,17 +1920,23 @@ int output_one_line_of_cl(
       index_ct_rest++;
     if (phr->has_aa_reio == _TRUE_)
       index_ct_rest++;
+    if (phr->has_aa_cross == _TRUE_)
+      index_ct_rest++;
     if (phr->has_at == _TRUE_)
       index_ct_rest++;
     if (phr->has_at_reco == _TRUE_)
       index_ct_rest++;
     if (phr->has_at_reio == _TRUE_)
       index_ct_rest++;
+    if (phr->has_at_cross == _TRUE_)
+      index_ct_rest++;
     if (phr->has_ae == _TRUE_)
       index_ct_rest++;
     if (phr->has_ae_reco == _TRUE_)
       index_ct_rest++;
     if (phr->has_ae_reio == _TRUE_)
+      index_ct_rest++;
+    if (phr->has_ae_cross == _TRUE_)
       index_ct_rest++;
     if (phr->has_ee_reco == _TRUE_)
       index_ct_rest++;

@@ -175,6 +175,28 @@ struct perturbations
 
   double z_max_pk; /**< when we compute only the matter spectrum / transfer functions, but not the CMB, we are sometimes interested to sample source functions at very high redshift, way before recombination. This z_max_pk will then fix the initial sampling time of the sources. */
 
+  double z_tomo_split; /**< visibility-valley redshift splitting recombination and reionization tomographic sources */
+  double tau_tomo_split; /**< visibility-valley conformal time splitting recombination and reionization tomographic sources */
+
+  short delta_chi_diag_ini_set;
+  short delta_chi_diag_rec_set;
+  double delta_chi_diag_ini_score;
+  double delta_chi_diag_rec_score;
+  double delta_chi_diag_k_ini;
+  double delta_chi_diag_tau_ini;
+  double delta_chi_diag_chi0_ini;
+  double delta_chi_diag_chi0_prime_ini;
+  double delta_chi_diag_chi0_double_prime_ini;
+  double delta_chi_diag_delta_ini;
+  double delta_chi_diag_delta_prime_ini;
+  double delta_chi_diag_k_rec;
+  double delta_chi_diag_tau_rec;
+  double delta_chi_diag_chi0_rec;
+  double delta_chi_diag_chi0_prime_rec;
+  double delta_chi_diag_chi0_double_prime_rec;
+  double delta_chi_diag_delta_rec;
+  double delta_chi_diag_delta_prime_rec;
+
   double * alpha_idm_dr; /**< Angular contribution to collisional term at l>=2 for idm_fr-idr */
   double * beta_idr;  /**< Angular contribution to collisional term at l>=2 for idr-idr */
 
